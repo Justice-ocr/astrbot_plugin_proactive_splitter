@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.4.0-brightgreen" alt="v1.4.0">
+    <img src="https://img.shields.io/badge/Version-v1.4.1-brightgreen" alt="v1.4.1">
   </p>
 </div>
 
@@ -131,8 +131,11 @@ $$
 
 - 查看运行状态、会话、计时器和 APScheduler 任务。
 - 查看下次触发时间、未回复次数和语境调度原因。
+- 明确显示因达到未回复次数上限而暂停的会话。
+- 查看表格/公式转图的启用状态、渲染策略、累计成功/失败次数和最近错误。
 - 立即触发、重新调度或取消任务。
-- 编辑全局配置。
+- 编辑全部全局配置，包括统一分段、表格/公式转图、通知与遥测设置。
+- 使用结构化列表增删文本查找/替换规则。
 - 为单个会话保存差异配置。
 - 查看插件文档和远程通知。
 

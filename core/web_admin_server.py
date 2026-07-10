@@ -101,6 +101,14 @@ class WebAdminServer:
     ASTRBOT_PLUGIN_NAME = "astrbot_plugin_proactive_splitter"
     ASTRBOT_PAGE_API_ENDPOINT = "dashboard"
     ASTRBOT_PAGE_API_PATH = f"/{ASTRBOT_PLUGIN_NAME}/{ASTRBOT_PAGE_API_ENDPOINT}"
+    CONFIG_SECTION_KEYS = (
+        "friend_settings",
+        "group_settings",
+        "web_admin",
+        "notification_settings",
+        "unified_splitter_settings",
+        "telemetry_config",
+    )
 
     def __init__(self, plugin: Any):
         # plugin 是主插件实例，Web 端所有状态与操作都通过它间接访问。
@@ -516,20 +524,7 @@ class WebAdminServer:
 
         @self.app.get("/api/config")
         async def get_config():
-            # 返回配置时显式过滤密码字段，避免管理端读取到明文密码。
-            web_admin = {
-                k: v
-                for k, v in self.config.get("web_admin", {}).items()
-                if k != "password"
-            }
-            return {
-                "friend_settings": dict(self.config.get("friend_settings", {})),
-                "group_settings": dict(self.config.get("group_settings", {})),
-                "web_admin": web_admin,
-                "notification_settings": dict(
-                    self.config.get("notification_settings", {})
-                ),
-            }
+            return self._build_config_payload()
 
         @self.app.get("/api/config-schema")
         async def get_config_schema():
@@ -1030,24 +1025,17 @@ class WebAdminServer:
         return True
 
     def _build_config_payload(self) -> dict[str, Any]:
-        web_admin = {
-            k: v for k, v in self.config.get("web_admin", {}).items() if k != "password"
-        }
-        return {
-            "friend_settings": dict(self.config.get("friend_settings", {})),
-            "group_settings": dict(self.config.get("group_settings", {})),
-            "web_admin": web_admin,
-            "notification_settings": dict(self.config.get("notification_settings", {})),
-        }
+        payload: dict[str, Any] = {}
+        for key in self.CONFIG_SECTION_KEYS:
+            section = self.config.get(key, {})
+            payload[key] = dict(section) if isinstance(section, dict) else {}
+        # 返回配置时显式过滤密码字段，避免管理端读取到明文密码。
+        payload["web_admin"].pop("password", None)
+        return payload
 
     async def _apply_config_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        # Pages 只能写入 WebUI 暴露的四个顶层配置段，避免误把运行时状态写进主配置。
-        allowed_keys = {
-            "friend_settings",
-            "group_settings",
-            "web_admin",
-            "notification_settings",
-        }
+        # 仅允许写入 Schema 暴露的顶层配置段，避免误把运行时状态写进主配置。
+        allowed_keys = set(self.CONFIG_SECTION_KEYS)
         changed = False
         for key in allowed_keys:
             if key not in payload:
@@ -1073,6 +1061,12 @@ class WebAdminServer:
         if not saved:
             return {"ok": False, "error": error or "Config save failed"}
         self._auth_enabled = bool(self.config.get("web_admin", {}).get("password", ""))
+        telemetry = getattr(self.plugin, "telemetry", None)
+        refresh_telemetry = getattr(telemetry, "update_config", None)
+        if callable(refresh_telemetry):
+            refreshed = refresh_telemetry(dict(self.config))
+            if inspect.isawaitable(refreshed):
+                await refreshed
         await self._broadcast_update("config")
         return {"ok": True, "config": self._build_config_payload()}
 
@@ -1428,6 +1422,10 @@ class WebAdminServer:
             auto_settings = session_config.get("auto_trigger_settings", {})
             schedule_settings = session_config.get("schedule_settings", {})
             context_settings = session_config.get("context_settings", {})
+            unanswered_count = session_data.get("unanswered_count", 0)
+            unanswered_paused = self.plugin._is_unanswered_limit_reached(
+                normalized_session_id, session_config, unanswered_count
+            )
             trigger_delay_minutes = int(
                 auto_settings.get("auto_trigger_after_minutes", 0) or 0
             )
@@ -1466,13 +1464,25 @@ class WebAdminServer:
                     "timer_kind": "auto_trigger",
                     "title": "自动触发检测",
                     # remaining_seconds 可用时说明计时器处于有效运行状态，否则只能标为 unknown。
-                    "status": "running" if remaining_seconds is not None else "unknown",
+                    "status": (
+                        "paused_unanswered"
+                        if unanswered_paused
+                        else "running"
+                        if remaining_seconds is not None
+                        else "unknown"
+                    ),
                     "remaining_seconds": remaining_seconds,
                     "target_time": target_time,
                     "started_at": started_at,
                     "window_seconds": trigger_delay_seconds,
                     "progress_percent": progress_percent,
-                    "unanswered_count": session_data.get("unanswered_count", 0),
+                    "unanswered_count": unanswered_count,
+                    "paused": unanswered_paused,
+                    "inactive_reason": (
+                        "已达到最大未回复次数，等待用户回复后恢复"
+                        if unanswered_paused
+                        else None
+                    ),
                     "auto_trigger_after_minutes": trigger_delay_minutes,
                 }
             )
@@ -1485,6 +1495,10 @@ class WebAdminServer:
             session_data = self.plugin.session_data.get(normalized_session_id, {})
             schedule_settings = session_config.get("schedule_settings", {})
             context_settings = session_config.get("context_settings", {})
+            unanswered_count = session_data.get("unanswered_count", 0)
+            unanswered_paused = self.plugin._is_unanswered_limit_reached(
+                normalized_session_id, session_config, unanswered_count
+            )
             idle_minutes = int(session_config.get("group_idle_trigger_minutes", 0) or 0)
             idle_seconds = max(0, idle_minutes * 60)
             timer_meta = self._safe_timer_meta(timer, now)
@@ -1530,13 +1544,25 @@ class WebAdminServer:
                     "timer_kind": "group_silence",
                     "title": "群沉默检测",
                     # 群沉默卡的状态定义与 auto_trigger 保持一致，便于前端复用状态渲染逻辑。
-                    "status": "running" if remaining_seconds is not None else "unknown",
+                    "status": (
+                        "paused_unanswered"
+                        if unanswered_paused
+                        else "running"
+                        if remaining_seconds is not None
+                        else "unknown"
+                    ),
                     "remaining_seconds": remaining_seconds,
                     "target_time": target_time,
                     "started_at": started_at if started_at else None,
                     "window_seconds": idle_seconds,
                     "progress_percent": progress_percent,
-                    "unanswered_count": session_data.get("unanswered_count", 0),
+                    "unanswered_count": unanswered_count,
+                    "paused": unanswered_paused,
+                    "inactive_reason": (
+                        "已达到最大未回复次数，等待用户回复后恢复"
+                        if unanswered_paused
+                        else None
+                    ),
                     "group_idle_trigger_minutes": idle_minutes,
                     "last_message_time": last_message_time or None,
                     "last_user_time": last_user_time,
@@ -1570,6 +1596,10 @@ class WebAdminServer:
             )
             schedule_settings = session_config.get("schedule_settings", {})
             context_settings = session_config.get("context_settings", {})
+            unanswered_count = session_data.get("unanswered_count", 0)
+            unanswered_paused = self.plugin._is_unanswered_limit_reached(
+                normalized_session_id, session_config, unanswered_count
+            )
             common_payload = {
                 "session_id": normalized_session_id,
                 "session_name": self.plugin._get_session_name(
@@ -1591,7 +1621,8 @@ class WebAdminServer:
                 "remaining_seconds": None,
                 "target_time": None,
                 "progress_percent": 0,
-                "unanswered_count": session_data.get("unanswered_count", 0),
+                "unanswered_count": unanswered_count,
+                "paused": unanswered_paused,
             }
 
             if session_category == "group":
@@ -1610,14 +1641,22 @@ class WebAdminServer:
                         "timer_kind": "group_silence",
                         "title": "群沉默检测",
                         "timer_kind_label": "群沉默检测",
-                        "status": "waiting_message",
+                        "status": (
+                            "paused_unanswered"
+                            if unanswered_paused
+                            else "waiting_message"
+                        ),
                         "window_seconds": idle_minutes * 60,
                         "group_idle_trigger_minutes": idle_minutes,
                         "last_message_time": self.plugin.last_message_times.get(
                             normalized_session_id
                         )
                         or None,
-                        "inactive_reason": "等待群聊新消息后开始沉默倒计时",
+                        "inactive_reason": (
+                            "已达到最大未回复次数，等待用户回复后恢复"
+                            if unanswered_paused
+                            else "等待群聊新消息后开始沉默倒计时"
+                        ),
                         "is_live_group_timer": False,
                     }
                 )
@@ -1646,11 +1685,21 @@ class WebAdminServer:
                     "timer_kind": "auto_trigger",
                     "title": "自动触发检测",
                     "timer_kind_label": "自动触发检测",
-                    "status": "waiting_idle" if last_message_time else "pending_timer",
+                    "status": (
+                        "paused_unanswered"
+                        if unanswered_paused
+                        else "waiting_idle"
+                        if last_message_time
+                        else "pending_timer"
+                    ),
                     "window_seconds": trigger_delay_minutes * 60,
                     "auto_trigger_after_minutes": trigger_delay_minutes,
                     "last_message_time": last_message_time or None,
-                    "inactive_reason": "当前没有运行中的自动触发计时器，等待运行时注册或下一次消息事件",
+                    "inactive_reason": (
+                        "已达到最大未回复次数，等待用户回复后恢复"
+                        if unanswered_paused
+                        else "当前没有运行中的自动触发计时器，等待运行时注册或下一次消息事件"
+                    ),
                 }
             )
             live_auto_sessions.add(normalized_session_id)
@@ -1679,6 +1728,22 @@ class WebAdminServer:
         uptime_sec = max(0, int(now - self.plugin.plugin_start_time))
         timer_cards = self._collect_timer_cards(now)
         visible_jobs_count = len(self._collect_jobs())
+        diagnostics_getter = getattr(
+            self.plugin, "get_unified_splitter_diagnostics", None
+        )
+        rich_content = (
+            diagnostics_getter()
+            if callable(diagnostics_getter)
+            else {
+                "enabled": False,
+                "split_enabled": False,
+                "rich_render_enabled": False,
+                "render_attempts": 0,
+                "render_successes": 0,
+                "render_failures": 0,
+                "render_skipped": 0,
+            }
+        )
 
         return {
             "running": True,
@@ -1705,6 +1770,7 @@ class WebAdminServer:
             + len(timer_cards["group_timer_cards"]),
             "auto_trigger_cards": timer_cards["auto_trigger_cards"],
             "group_timer_cards": timer_cards["group_timer_cards"],
+            "rich_content": rich_content,
             "ws_connections": len(self._ws_connections),
             # 时间戳用于前端判断数据新鲜度或手动刷新完成时间。
             "timestamp": datetime.now().isoformat(),
@@ -1749,15 +1815,15 @@ class WebAdminServer:
             schedule_settings = session_config.get("schedule_settings", {})
             context_settings = session_config.get("context_settings", {})
             unanswered_count = session_data.get("unanswered_count", 0)
-            if self.plugin._is_unanswered_limit_reached(
+            unanswered_paused = self.plugin._is_unanswered_limit_reached(
                 normalized_session_id, session_config, unanswered_count
-            ):
-                continue
+            )
             jobs.append(
                 {
                     "id": session_id,
-                    "status": "scheduled",
-                    "status_label": "已调度",
+                    "has_scheduler_job": True,
+                    "status": "paused_unanswered" if unanswered_paused else "scheduled",
+                    "status_label": "未回复上限暂停" if unanswered_paused else "已调度",
                     "session_name": self.plugin._get_session_name(
                         session_id, session_config
                     ),
@@ -1776,6 +1842,12 @@ class WebAdminServer:
                         job.next_run_time.isoformat() if job.next_run_time else None
                     ),
                     "unanswered_count": unanswered_count,
+                    "paused": unanswered_paused,
+                    "inactive_reason": (
+                        "已达到最大未回复次数，等待用户回复后恢复"
+                        if unanswered_paused
+                        else None
+                    ),
                     "manual_trigger_in_progress": session_id
                     in self.plugin.manual_trigger_sessions,
                     # 以下字段用于前端推导进度条与调度窗口说明。
@@ -1822,10 +1894,9 @@ class WebAdminServer:
             schedule_settings = session_config.get("schedule_settings", {})
             context_settings = session_config.get("context_settings", {})
             unanswered_count = session_data.get("unanswered_count", 0)
-            if self.plugin._is_unanswered_limit_reached(
+            unanswered_paused = self.plugin._is_unanswered_limit_reached(
                 normalized_session_id, session_config, unanswered_count
-            ):
-                continue
+            )
             next_trigger_time = session_data.get("next_trigger_time")
             next_run_time = None
             if next_trigger_time:
@@ -1840,8 +1911,13 @@ class WebAdminServer:
             jobs.append(
                 {
                     "id": normalized_session_id,
-                    "status": "pending_schedule",
-                    "status_label": "待调度",
+                    "has_scheduler_job": False,
+                    "status": (
+                        "paused_unanswered" if unanswered_paused else "pending_schedule"
+                    ),
+                    "status_label": (
+                        "未回复上限暂停" if unanswered_paused else "待调度"
+                    ),
                     "session_name": self.plugin._get_session_name(
                         normalized_session_id, session_config
                     ),
@@ -1859,6 +1935,7 @@ class WebAdminServer:
                     ),
                     "next_run_time": next_run_time,
                     "unanswered_count": unanswered_count,
+                    "paused": unanswered_paused,
                     "manual_trigger_in_progress": normalized_session_id
                     in self.plugin.manual_trigger_sessions,
                     "next_trigger_time": next_trigger_time,
@@ -1885,7 +1962,11 @@ class WebAdminServer:
                         "max_interval_minutes"
                     ),
                     "quiet_hours": schedule_settings.get("quiet_hours", ""),
-                    "inactive_reason": "当前没有 APScheduler 任务，可能正在等待下一次触发条件或需要重新调度",
+                    "inactive_reason": (
+                        "已达到最大未回复次数，等待用户回复后恢复"
+                        if unanswered_paused
+                        else "当前没有 APScheduler 任务，可能正在等待下一次触发条件或需要重新调度"
+                    ),
                 }
             )
 

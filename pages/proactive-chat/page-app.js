@@ -2,6 +2,14 @@
     "use strict";
 
     var PLUGIN_REPO = "https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter";
+    var GLOBAL_CONFIG_KEYS = [
+        "friend_settings",
+        "group_settings",
+        "web_admin",
+        "notification_settings",
+        "unified_splitter_settings",
+        "telemetry_config"
+    ];
     var state = {
         view: "status",
         bridge: null,
@@ -337,6 +345,10 @@
             }
         });
         document.addEventListener("input", function (event) {
+            if (event.target && event.target.getAttribute("data-template-list-path")) {
+                updateTemplateListControl(event.target);
+                return;
+            }
             if (event.target && event.target.getAttribute("data-config-path")) {
                 updateConfigFromControl(event.target, false);
             }
@@ -358,6 +370,8 @@
         if (action === "toggle-all-config") toggleAllConfigGroups();
         if (action === "reset-config-defaults") resetConfigDefaults();
         if (action === "discard-config") loadConfig();
+        if (action === "add-template-row") addTemplateListRow(node.getAttribute("data-path"));
+        if (action === "remove-template-row") removeTemplateListRow(node.getAttribute("data-path"), Number(node.getAttribute("data-index")));
     }
 
     function switchView(view) {
@@ -446,6 +460,9 @@
         var realJobsCount = Number(status.jobs_count || 0);
         var visibleJobsCount = Math.max(realJobsCount, asArray(state.jobs).length);
         var pendingJobsCount = Math.max(0, visibleJobsCount - realJobsCount);
+        var rich = status.rich_content || {};
+        var richLastResult = rich.last_result === "success" ? "最近成功" : rich.last_result === "failure" ? "最近失败" : rich.last_result === "disabled" ? "已跳过" : "暂无记录";
+        var richStrategy = rich.use_network ? "优先网络渲染" : "本地渲染";
         $("view-status").innerHTML = [
             '<div class="pc-grid metrics">',
             metric("插件状态", status.running ? "运行中" : "已停止", "版本 " + text(status.version, "...")),
@@ -465,6 +482,14 @@
             infoRow("群沉默计时器", groupTimerSummary),
             fallbackCards.length ? infoRow("其中会话调度倒计时", fallbackCards.length + " 个") : "",
             infoRow("数据时间", formatDate(status.timestamp)),
+            '</div></div>',
+            '<div class="pc-card"><div class="pc-card-title">表格与公式转图</div><div class="pc-list" style="margin-top:14px">',
+            infoRow("统一消息处理", rich.enabled ? "已启用" : "已关闭"),
+            infoRow("自动转图", rich.rich_render_enabled ? "已启用" : "已关闭"),
+            infoRow("渲染策略", richStrategy + " · 模板 " + text(rich.template_name, "base")),
+            infoRow("累计结果", "成功 " + Number(rich.render_successes || 0) + " / 失败 " + Number(rich.render_failures || 0) + " / 跳过 " + Number(rich.render_skipped || 0)),
+            infoRow("最近结果", richLastResult + (rich.last_kind ? " · " + rich.last_kind : "")),
+            rich.last_error ? infoRow("最近错误", rich.last_error) : "",
             '</div></div></div>'
         ].join("");
     }
@@ -554,6 +579,7 @@
     }
 
     function timerStatusLabel(item) {
+        if (item.status === "paused_unanswered") return "未回复上限暂停";
         if (item.status === "waiting_message") return "等待消息";
         if (item.status === "waiting_idle") return "等待空闲";
         if (item.status === "pending_timer") return "未挂起";
@@ -637,6 +663,7 @@
             var job = jobs[i] || {};
             var id = job.id || job.session || "";
             var isPending = job.status === "pending_schedule";
+            var isPaused = job.status === "paused_unanswered" || job.paused;
             var statusLabel = job.status_label || (isPending ? "待调度" : "已调度");
             var nextTime = job.next_run_time || job.next_trigger_time;
             var detailText = "下次运行: " + formatDate(timestampMs(nextTime) || nextTime) + " · 来源: " + text(job.source_mode, "--") + " · 未回复: " + text(job.unanswered_count, "0") + "/" + text(job.max_unanswered_times, "0");
@@ -651,8 +678,8 @@
             html.push('<div class="pc-row-meta">', escapeHtml(detailText), '</div>');
             html.push('<div class="pc-row-actions">');
             html.push('<button class="pc-button" data-action="trigger-job" data-id="', escapeHtml(id), '">立即触发</button>');
-            html.push('<button class="pc-button secondary" data-action="reschedule-job" data-id="', escapeHtml(id), '">重新调度</button>');
-            if (!isPending) html.push('<button class="pc-button ghost" data-action="cancel-job" data-id="', escapeHtml(id), '">取消任务</button>');
+            html.push('<button class="pc-button secondary" data-action="reschedule-job" data-id="', escapeHtml(id), '"', isPaused ? " disabled" : "", '>', isPaused ? "等待用户回复" : "重新调度", '</button>');
+            if (job.has_scheduler_job !== false && !isPending) html.push('<button class="pc-button ghost" data-action="cancel-job" data-id="', escapeHtml(id), '">取消任务</button>');
             html.push('</div></div>');
         }
         html.push('</div></div>');
@@ -737,6 +764,65 @@
         return value === undefined ? schemaDefault(schema) : value;
     }
 
+    function getSchemaByConfigPath(path) {
+        var parts = parsePath(path);
+        var current = state.configSchema || {};
+        for (var i = 0; i < parts.length; i += 1) {
+            if (current && current[parts[i]]) {
+                current = current[parts[i]];
+            } else if (current && current.items && current.items[parts[i]]) {
+                current = current.items[parts[i]];
+            } else {
+                return {};
+            }
+        }
+        return current || {};
+    }
+
+    function templateListItems(schema) {
+        var templates = schema && schema.templates || {};
+        var keys = objectKeys(templates);
+        return keys.length ? templates[keys[0]].items || {} : {};
+    }
+
+    function addTemplateListRow(path) {
+        var schema = getSchemaByConfigPath(path);
+        var itemSchemas = templateListItems(schema);
+        var current = getByPath(state.config, path);
+        var rows = Array.isArray(current) ? current.slice() : [];
+        var row = {};
+        var keys = objectKeys(itemSchemas);
+        for (var i = 0; i < keys.length; i += 1) {
+            row[keys[i]] = schemaDefault(itemSchemas[keys[i]]);
+        }
+        rows.push(row);
+        setByPath(state.config, path, rows);
+        setFeedback("", "");
+        render();
+    }
+
+    function removeTemplateListRow(path, index) {
+        var current = getByPath(state.config, path);
+        var rows = Array.isArray(current) ? current.slice() : [];
+        if (index >= 0 && index < rows.length) rows.splice(index, 1);
+        setByPath(state.config, path, rows);
+        setFeedback("", "");
+        render();
+    }
+
+    function updateTemplateListControl(node) {
+        var path = node.getAttribute("data-template-list-path");
+        var index = Number(node.getAttribute("data-template-index"));
+        var key = node.getAttribute("data-template-key");
+        var current = getByPath(state.config, path);
+        var rows = Array.isArray(current) ? current.slice() : [];
+        if (!rows[index] || typeof rows[index] !== "object") rows[index] = {};
+        rows[index] = Object.assign({}, rows[index]);
+        rows[index][key] = node.value;
+        setByPath(state.config, path, rows);
+        setFeedback("", "");
+    }
+
     function conditionMatches(path, schema) {
         if (!schema || !schema.condition) return true;
         var parts = parsePath(path);
@@ -786,7 +872,30 @@
         }
 
         var input = "";
-        if (type === "bool" || type === "boolean") {
+        if (type === "template_list") {
+            var itemSchemas = templateListItems(schema);
+            var itemKeys = objectKeys(itemSchemas);
+            var rows = Array.isArray(value) ? value : [];
+            var rowHtml = [];
+            for (var rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+                var controls = [];
+                for (var itemIndex = 0; itemIndex < itemKeys.length; itemIndex += 1) {
+                    var itemKey = itemKeys[itemIndex];
+                    var itemSchema = itemSchemas[itemKey] || {};
+                    controls.push(
+                        '<label class="pc-template-field"><span>' + escapeHtml(schemaTitle(itemKey, itemSchema)) + '</span>' +
+                        '<input class="pc-input" data-template-list-path="' + escapeHtml(path) + '" data-template-index="' + rowIndex + '" data-template-key="' + escapeHtml(itemKey) + '" value="' + escapeHtml(rows[rowIndex] && rows[rowIndex][itemKey] !== undefined ? rows[rowIndex][itemKey] : schemaDefault(itemSchema)) + '"></label>'
+                    );
+                }
+                rowHtml.push(
+                    '<div class="pc-template-row">' + controls.join("") +
+                    '<button class="pc-button ghost pc-template-remove" type="button" data-action="remove-template-row" data-path="' + escapeHtml(path) + '" data-index="' + rowIndex + '">删除</button></div>'
+                );
+            }
+            input = '<div class="pc-template-list">' +
+                (rowHtml.length ? rowHtml.join("") : '<div class="pc-template-empty">暂无规则</div>') +
+                '<button class="pc-button secondary" type="button" data-action="add-template-row" data-path="' + escapeHtml(path) + '">添加规则</button></div>';
+        } else if (type === "bool" || type === "boolean") {
             input = '<label class="pc-switch"><input type="checkbox"' + controlAttrs(path, "bool") + (value ? " checked" : "") + '><span></span></label>';
         } else if (type === "int" || type === "integer" || type === "number" || type === "float" || type === "double") {
             var slider = schema.slider || {};
@@ -1143,12 +1252,11 @@
             syncConfigFromVisibleControls();
             var cleaned = cleanConfig(state.config || {});
             state.config = cleaned;
-            var payload = {
-                friend_settings: cleaned.friend_settings,
-                group_settings: cleaned.group_settings,
-                web_admin: cleaned.web_admin,
-                notification_settings: cleaned.notification_settings
-            };
+            var payload = {};
+            for (var keyIndex = 0; keyIndex < GLOBAL_CONFIG_KEYS.length; keyIndex += 1) {
+                var configKey = GLOBAL_CONFIG_KEYS[keyIndex];
+                payload[configKey] = cleaned[configKey] || {};
+            }
             setBusy("configSave", true);
             // 保存后立即回读，避免只更新前端状态而后端实际没有持久化。
             directBridgePost("save_config", payload).then(function (data) {
@@ -1157,7 +1265,7 @@
                 }
                 return apiGet(route("get_config")).then(function (serverConfig) {
                     var mismatched = [];
-                    var keys = ["friend_settings", "group_settings", "web_admin", "notification_settings"];
+                    var keys = GLOBAL_CONFIG_KEYS;
                     for (var i = 0; i < keys.length; i += 1) {
                         if (!sameConfigValue(serverConfig && serverConfig[keys[i]], payload[keys[i]])) {
                             mismatched.push(keys[i]);

@@ -6,6 +6,21 @@
  const { Box, TextField, Switch, Typography, Button, Accordion, AccordionSummary, AccordionDetails, Paper, Chip, Slider, MenuItem, ToggleButton, ToggleButtonGroup } = MaterialUI;
  const { useState, useEffect, useRef, useLayoutEffect } = React;
 
+const GLOBAL_CONFIG_KEYS = [
+    'friend_settings',
+    'group_settings',
+    'web_admin',
+    'notification_settings',
+    'unified_splitter_settings',
+    'telemetry_config',
+];
+
+const matchesSchemaCondition = (schema, parentValue) => {
+    if (!schema?.condition) return true;
+    const source = parentValue && typeof parentValue === 'object' ? parentValue : {};
+    return Object.entries(schema.condition).every(([key, expected]) => source[key] === expected);
+};
+
 // 递归扫描 Schema 中所有 object 节点，生成“全部展开 / 收起”功能需要的路径列表。
 const getAllExpandablePaths = (schema, prefix = '') => {
     let paths = [];
@@ -176,7 +191,9 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
                     </AccordionSummary>
                     <AccordionDetails sx={{ px: 3, py: 0, bgcolor: 'background.default' }}>
                         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                            {Object.entries(schema.items).map(([key, subSchema]) => (
+                            {Object.entries(schema.items)
+                                .filter(([, subSchema]) => matchesSchemaCondition(subSchema, localValue))
+                                .map(([key, subSchema]) => (
                                 <ConfigField
                                     key={key}
                                     fieldKey={key}
@@ -209,6 +226,74 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
             )}
         </Box>
     );
+
+    if (schema.type === 'template_list') {
+        const template = Object.values(schema.templates || {})[0] || {};
+        const itemSchemas = template.items || {};
+        const rows = Array.isArray(localValue) ? localValue : [];
+        const createRow = () => Object.fromEntries(
+            Object.entries(itemSchemas).map(([key, itemSchema]) => [key, itemSchema.default ?? ''])
+        );
+        const updateRow = (index, key, nextValue) => {
+            const nextRows = rows.map((row, rowIndex) => (
+                rowIndex === index ? { ...(row || {}), [key]: nextValue } : row
+            ));
+            handleChange(nextRows);
+        };
+
+        return (
+            <Box sx={{ py: 1.75, borderBottom: depth === 0 ? 'none' : '1px solid', borderColor: 'divider' }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, mb: rows.length ? 1.25 : 0 }}>
+                    <DescriptionSection flex={1} />
+                    <Button size="small" variant="outlined" onClick={() => handleChange([...rows, createRow()])}>
+                        添加规则
+                    </Button>
+                </Box>
+                {rows.length === 0 ? (
+                    <Typography variant="caption" color="text.secondary">暂无规则。添加后可分别填写查找文本和替换文本。</Typography>
+                ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {rows.map((row, index) => (
+                            <Box
+                                key={`${currentPath}-${index}`}
+                                sx={{
+                                    display: 'grid',
+                                    gridTemplateColumns: {
+                                        xs: '1fr',
+                                        md: `repeat(${Math.max(1, Object.keys(itemSchemas).length)}, minmax(0, 1fr)) auto`,
+                                    },
+                                    gap: 1,
+                                    alignItems: 'center',
+                                    p: 1.25,
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                    borderRadius: 1.5,
+                                    bgcolor: 'background.paper',
+                                }}
+                            >
+                                {Object.entries(itemSchemas).map(([key, itemSchema]) => (
+                                    <TextField
+                                        key={key}
+                                        size="small"
+                                        label={itemSchema.description || key}
+                                        value={row?.[key] ?? itemSchema.default ?? ''}
+                                        onChange={(event) => updateRow(index, key, event.target.value)}
+                                    />
+                                ))}
+                                <Button
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleChange(rows.filter((_, rowIndex) => rowIndex !== index))}
+                                >
+                                    删除
+                                </Button>
+                            </Box>
+                        ))}
+                    </Box>
+                )}
+            </Box>
+        );
+    }
 
     // 布尔配置映射为开关组件，适合表示 enable / always_send_text 这类 on-off 项。
     if (schema.type === 'bool' || schema.type === 'boolean') {
@@ -878,14 +963,12 @@ function ConfigRenderer() {
                 // 会话模式保存后强制回读服务端 effective，确保会话隔离与覆写状态显示正确
                 await loadConfig(currentMode, currentSession);
             } else {
-                const payload = {
-                    friend_settings: cleanedConfig.friend_settings,
-                    group_settings: cleanedConfig.group_settings,
-                    web_admin: cleanedConfig.web_admin,
-                };
-                await api.updateConfig(payload);
+                const payload = Object.fromEntries(
+                    GLOBAL_CONFIG_KEYS.map((key) => [key, cleanedConfig[key] || {}])
+                );
+                const response = await api.updateConfig(payload);
                 isDirtyRef.current = false;
-                setConfig(cleanedConfig); // 全局模式可直接更新界面
+                setConfig(response?.config || cleanedConfig);
                 localStorage.removeItem(getDraftKey(currentMode, currentSession)); // 已保存，清除草稿
                 setSaveFeedback({ type: 'success', text: '全局配置已保存' });
             }
@@ -1286,4 +1369,3 @@ function ConfigRenderer() {
 
 window.ConfigRenderer = ConfigRenderer;
 })();
-

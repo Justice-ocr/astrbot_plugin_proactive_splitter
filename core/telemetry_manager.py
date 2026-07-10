@@ -98,6 +98,20 @@ class TelemetryManager:
         """是否启用遥测。"""
         return self._enabled
 
+    def update_config(self, config: dict[str, Any]) -> None:
+        """Apply a freshly persisted plugin config without requiring a restart."""
+        self._config = config
+        telemetry_config = config.get("telemetry_config", {})
+        self._enabled = bool(telemetry_config.get("enabled", True))
+        if not self._enabled:
+            for task_name in ("_flush_timer_task", "_drain_task"):
+                task = getattr(self, task_name, None)
+                if task and not task.done():
+                    task.cancel()
+                setattr(self, task_name, None)
+            self._feature_buffer.clear()
+            self._backlog.clear()
+
     def _get_or_create_instance_id(self) -> str:
         """获取或创建实例 ID。"""
         try:

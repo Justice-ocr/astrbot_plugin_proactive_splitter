@@ -79,7 +79,7 @@ sys.modules["astrbot.core.message.message_event_result"] = event_result
 sys.modules.setdefault("astrbot.core.star", types.ModuleType("astrbot.core.star"))
 sys.modules["astrbot.core.star.session_llm_manager"] = session_manager
 
-from core.unified_splitter import UnifiedSplitterMixin
+from core.unified_splitter import UnifiedSplitterMixin  # noqa: E402
 
 
 class FakeResult:
@@ -149,6 +149,12 @@ def test_rich_blocks_are_images_before_text_splitting():
     assert len(renderer.calls) == 2
     assert len(images) == 2
     assert all(len(unit) == 1 for unit in all_units)
+    diagnostics = plugin.get_unified_splitter_diagnostics()
+    assert diagnostics["render_attempts"] == 2
+    assert diagnostics["render_successes"] == 2
+    assert diagnostics["render_failures"] == 0
+    assert diagnostics["last_result"] == "success"
+    assert diagnostics["last_segments_count"] == len(all_units)
 
 
 def test_render_failure_keeps_formula_as_one_plain_block():
@@ -162,7 +168,26 @@ def test_render_failure_keeps_formula_as_one_plain_block():
     assert len(event.result.chain) == 1
     assert isinstance(event.result.chain[0], Plain)
     assert event.result.chain[0].text == "$$\nE = mc^2\n$$"
+    diagnostics = plugin.get_unified_splitter_diagnostics()
+    assert diagnostics["render_attempts"] == 1
+    assert diagnostics["render_failures"] == 1
+    assert diagnostics["last_result"] == "failure"
+    assert diagnostics["last_error"] == "render failed"
     renderer.fail = False
+
+
+def test_disabled_rich_render_is_counted_as_skipped():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"]["enable_rich_render"] = False
+    event = FakeEvent("$x + y = z$")
+    asyncio.run(plugin.unified_on_decorating_result(event))
+
+    diagnostics = plugin.get_unified_splitter_diagnostics()
+    assert not renderer.calls
+    assert diagnostics["render_attempts"] == 0
+    assert diagnostics["render_skipped"] == 1
+    assert diagnostics["last_result"] == "disabled"
 
 
 def test_reverse_replace_is_applied_to_user_prompt():

@@ -15,6 +15,19 @@ function normalizeTimestampValue(value) {
 }
 
 function resolveTaskProgress(job, nowMs) {
+    if (job.status === 'paused_unanswered' || job.paused) {
+        return {
+            nextRun: null,
+            nextTrigger: null,
+            remainingSeconds: 0,
+            remainingText: '--',
+            countdownText: job.inactive_reason || '已达到最大未回复次数，等待用户回复后恢复',
+            friendlyText: '--',
+            status: 'paused',
+            statusLabel: '已暂停',
+            progressPercent: 100,
+        };
+    }
     const nextRun = parseDateish(job.next_run_time);
     const nextTrigger = parseDateish(normalizeTimestampValue(job.next_trigger_time));
     const scheduledAtMs = normalizeTimestampValue(job.last_scheduled_at);
@@ -93,6 +106,37 @@ function resolveTaskProgress(job, nowMs) {
         statusLabel,
         progressPercent,
     };
+}
+
+function resolveScheduleStrategy(job) {
+    const strategy = String(job.last_schedule_strategy || '').toLowerCase();
+    const source = String(job.last_schedule_source || '').toLowerCase();
+    if (strategy === 'contextual' || source === 'recent_context') return '语境预测';
+    if (strategy === 'random' || source === 'random_interval') return '随机区间';
+    return strategy || source || '--';
+}
+
+function resolveScheduleReason(job) {
+    const rule = String(job.last_schedule_rule || '');
+    const reason = String(job.last_schedule_reason || '');
+    const labels = {
+        explicit_delay: '明确延后',
+        tomorrow: '明天再聊',
+        do_not_disturb: '暂不打扰',
+        sleep_night: '睡眠休息',
+        movie: '观影追剧',
+        meeting_or_class: '会议课程',
+        commute: '通勤路上',
+        meal: '用餐时间',
+        shower: '短时离开',
+        game: '游戏中',
+        short_later: '稍后再聊',
+    };
+    if (labels[rule]) return labels[rule];
+    if (reason.startsWith('context:explicit_delay:')) {
+        return `明确延后 ${reason.replace('context:explicit_delay:', '')}`;
+    }
+    return reason || rule || '--';
 }
 
 function formatQuietHoursText(value) {
@@ -323,9 +367,12 @@ function TasksView({ onRefresh }) {
                             job.schedule_max_interval_minutes,
                         );
                         const quietHoursText = formatQuietHoursText(job.quiet_hours);
+                        const scheduleStrategyText = resolveScheduleStrategy(job);
+                        const scheduleReasonText = resolveScheduleReason(job);
+                        const isPaused = task.status === 'paused';
 
                         return (
-                            <div className={`card task-card-enhanced ${task.status === 'urgent' ? 'is-urgent' : ''} ${task.status === 'expired' ? 'is-expired' : ''}`} key={job.id}>
+                            <div className={`card task-card-enhanced ${task.status === 'urgent' ? 'is-urgent' : ''} ${task.status === 'expired' ? 'is-expired' : ''} ${isPaused ? 'is-paused' : ''}`} key={job.id}>
                                 <div className="task-card-top" style={{ overflow: 'visible' }}>
                                     <div className="task-card-title-block" style={{ overflow: 'visible' }}>
                                         <Typography variant="subtitle2" className="task-card-kicker">
@@ -451,6 +498,40 @@ function TasksView({ onRefresh }) {
                                             {quietHoursText}
                                         </Typography>
                                     </Box>
+                                    <Box
+                                        sx={{
+                                            px: 1.5,
+                                            py: 1.25,
+                                            borderRadius: 2.5,
+                                            border: '1px solid rgba(103, 80, 164, 0.12)',
+                                            background: 'rgba(103, 80, 164, 0.04)',
+                                            minWidth: 0,
+                                        }}
+                                    >
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.4 }}>
+                                            调度策略
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                                            {scheduleStrategyText}
+                                        </Typography>
+                                    </Box>
+                                    <Box
+                                        sx={{
+                                            px: 1.5,
+                                            py: 1.25,
+                                            borderRadius: 2.5,
+                                            border: '1px solid rgba(103, 80, 164, 0.12)',
+                                            background: 'rgba(103, 80, 164, 0.04)',
+                                            minWidth: 0,
+                                        }}
+                                    >
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.4 }}>
+                                            调度依据
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', overflowWrap: 'anywhere' }}>
+                                            {scheduleReasonText}
+                                        </Typography>
+                                    </Box>
                                 </Box>
  
                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 'auto', pt: 1.5 }}>
@@ -499,23 +580,25 @@ function TasksView({ onRefresh }) {
                                             variant="outlined"
                                             size="small"
                                             fullWidth
-                                            disabled={isTriggerRunning || isRescheduling}
+                                            disabled={isTriggerRunning || isRescheduling || isPaused}
                                             onClick={() => rescheduleJob(job.id)}
                                             sx={{ borderRadius: 2.5 }}
                                         >
-                                            {isRescheduling ? '重新调度中…' : '重新调度'}
+                                            {isPaused ? '等待用户回复' : isRescheduling ? '重新调度中…' : '重新调度'}
                                         </Button>
-                                        <Button
-                                            variant="outlined"
-                                            color="error"
-                                            size="small"
-                                            fullWidth
-                                            disabled={isRescheduling}
-                                            onClick={() => cancelJob(job.id)}
-                                            sx={{ borderRadius: 2.5 }}
-                                        >
-                                            取消任务
-                                        </Button>
+                                        {job.has_scheduler_job !== false ? (
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                size="small"
+                                                fullWidth
+                                                disabled={isRescheduling}
+                                                onClick={() => cancelJob(job.id)}
+                                                sx={{ borderRadius: 2.5 }}
+                                            >
+                                                取消任务
+                                            </Button>
+                                        ) : null}
                                     </Box>
                                 </Box>
                             </div>
@@ -530,4 +613,3 @@ function TasksView({ onRefresh }) {
 // 暴露为全局视图组件，供应用入口按 currentView 切换。
 window.TasksView = TasksView;
 })();
-

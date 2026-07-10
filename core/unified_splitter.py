@@ -6,6 +6,7 @@ import asyncio
 import math
 import random
 import re
+import time
 from typing import Any
 
 from astrbot.api import html_renderer, logger
@@ -22,6 +23,37 @@ class UnifiedSplitterMixin:
 
     context: Any
     config: Any
+
+    def get_unified_splitter_diagnostics(self) -> dict[str, Any]:
+        """Return a JSON-safe snapshot for the Web management surfaces."""
+        settings = self._get_unified_splitter_config()
+        stats = getattr(self, "_unified_splitter_diagnostics", None)
+        if not isinstance(stats, dict):
+            stats = {}
+        return {
+            "enabled": bool(settings.get("enable", True)),
+            "split_enabled": bool(settings.get("enable_split", True)),
+            "rich_render_enabled": bool(settings.get("enable_rich_render", True)),
+            "use_network": bool(settings.get("rich_render_use_network", True)),
+            "template_name": settings.get("rich_render_template", "base") or "base",
+            "render_attempts": int(stats.get("render_attempts", 0) or 0),
+            "render_successes": int(stats.get("render_successes", 0) or 0),
+            "render_failures": int(stats.get("render_failures", 0) or 0),
+            "render_skipped": int(stats.get("render_skipped", 0) or 0),
+            "last_result": stats.get("last_result"),
+            "last_kind": stats.get("last_kind"),
+            "last_error": stats.get("last_error"),
+            "last_render_at": stats.get("last_render_at"),
+            "last_segments_count": int(stats.get("last_segments_count", 0) or 0),
+            "last_processed_at": stats.get("last_processed_at"),
+        }
+
+    def _record_unified_splitter_diagnostic(self, **updates: Any) -> None:
+        stats = getattr(self, "_unified_splitter_diagnostics", None)
+        if not isinstance(stats, dict):
+            stats = {}
+            setattr(self, "_unified_splitter_diagnostics", stats)
+        stats.update(updates)
 
     def _get_unified_splitter_config(self, event: Any | None = None) -> dict:
         configured = self.config.get("unified_splitter_settings", {})
@@ -102,6 +134,10 @@ class UnifiedSplitterMixin:
         segments = await self._build_unified_segments(event, list(result.chain), settings)
         self._post_clean_segments(segments, settings)
         segments = [segment for segment in segments if self._segment_has_content(segment)]
+        self._record_unified_splitter_diagnostic(
+            last_segments_count=len(segments),
+            last_processed_at=time.time(),
+        )
         if not segments:
             result.chain.clear()
             return
@@ -324,7 +360,21 @@ class UnifiedSplitterMixin:
 
     async def _render_rich_block(self, text: str, kind: str, settings: dict):
         if not settings.get("enable_rich_render", True):
+            diagnostics = self.get_unified_splitter_diagnostics()
+            self._record_unified_splitter_diagnostic(
+                render_skipped=diagnostics["render_skipped"] + 1,
+                last_result="disabled",
+                last_kind=kind,
+                last_error=None,
+                last_render_at=time.time(),
+            )
             return Plain(text=text)
+        diagnostics = self.get_unified_splitter_diagnostics()
+        self._record_unified_splitter_diagnostic(
+            render_attempts=diagnostics["render_attempts"] + 1,
+            last_kind=kind,
+            last_render_at=time.time(),
+        )
         try:
             path = await html_renderer.render_t2i(
                 text,
@@ -332,11 +382,25 @@ class UnifiedSplitterMixin:
                 return_url=False,
                 template_name=settings.get("rich_render_template", "base") or "base",
             )
+            diagnostics = self.get_unified_splitter_diagnostics()
+            self._record_unified_splitter_diagnostic(
+                render_successes=diagnostics["render_successes"] + 1,
+                last_result="success",
+                last_error=None,
+                last_render_at=time.time(),
+            )
             logger.info(f"[Proactive Splitter] 已将 {kind} 内容渲染为图片。")
             if str(path).startswith(("http://", "https://", "file://", "base64://", "data:")):
                 return Image(file=path)
             return Image.fromFileSystem(path)
         except Exception as exc:
+            diagnostics = self.get_unified_splitter_diagnostics()
+            self._record_unified_splitter_diagnostic(
+                render_failures=diagnostics["render_failures"] + 1,
+                last_result="failure",
+                last_error=str(exc),
+                last_render_at=time.time(),
+            )
             logger.warning(f"[Proactive Splitter] {kind} 渲染失败，保留完整文本: {exc}")
             return Plain(text=text)
 

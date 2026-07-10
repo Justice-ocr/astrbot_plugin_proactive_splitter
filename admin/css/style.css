@@ -2022,6 +2022,14 @@ body.dark-theme .status-timer-info-item {
     border-color: rgba(244, 67, 54, 0.28);
 }
 
+.task-card-enhanced.is-paused {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.status-timer-card.is-paused {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
 .task-card-top {
     display: flex;
     justify-content: space-between;
@@ -2687,6 +2695,11 @@ body.dark-theme .status-timer-info-item {
 .task-status-pill.is-unknown {
     background: rgba(244, 67, 54, 0.14);
     color: #C62828;
+}
+
+.task-status-pill.is-paused {
+    background: rgba(245, 158, 11, 0.16);
+    color: #B45309;
 }
 
 .task-progress-track {

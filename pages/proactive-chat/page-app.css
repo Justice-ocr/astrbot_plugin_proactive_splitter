@@ -857,6 +857,40 @@ body.dark-theme .pc-config-group {
     min-width: 0;
 }
 
+.pc-template-list {
+    display: grid;
+    gap: 10px;
+}
+
+.pc-template-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    gap: 10px;
+    align-items: end;
+    padding: 10px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: var(--md-sys-color-surface-container-low, rgba(103, 80, 164, 0.04));
+}
+
+.pc-template-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.pc-template-remove {
+    min-height: 40px;
+}
+
+.pc-template-empty {
+    color: var(--muted);
+    font-size: 13px;
+}
+
 .pc-number-field {
     display: grid;
     grid-template-columns: minmax(120px, 1fr) 110px;
@@ -980,6 +1014,11 @@ body.dark-theme .pc-config-group {
     .pc-config-field.depth-0,
     .pc-session-enable {
         grid-template-columns: 1fr;
+    }
+
+    .pc-template-row {
+        grid-template-columns: 1fr;
+        align-items: stretch;
     }
 
     .session-picker {

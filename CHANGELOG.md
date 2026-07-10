@@ -5,6 +5,15 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+## v1.4.1 - Web 管理端完整配置与运行诊断
+
+- 修复独立 WebUI 和 AstrBot Pages 无法保存统一分段、表格/公式转图及遥测配置的问题。
+- 修复独立 WebUI 漏存通知配置的问题，并在保存后使用服务端配置回读结果。
+- 新增结构化文本查找/替换规则编辑器，支持增删多条 `find` / `replace` 规则。
+- 达到未回复次数上限的会话不再从任务列表消失，改为明确显示暂停原因。
+- 独立 WebUI 新增语境调度策略、命中依据和表格/公式转图运行诊断。
+- 遥测开关保存后立即生效；关闭时取消待发送任务并清空内存缓冲。
+
 ## v1.4.0 - 合入 Justice 语境调度与 Pages 控制台
 
 - 合入 `Justice-ocr/astrbot_plugin_proactive_chat` 的主线增量。

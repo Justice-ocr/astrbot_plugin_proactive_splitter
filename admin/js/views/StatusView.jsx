@@ -78,7 +78,10 @@ function resolveStatusTimerCard(timer, nowMs, displayTimezone) {
     // 根据剩余时间给卡片打上状态标签，供颜色、文案和动画统一使用。
     let status = 'future';
     let statusLabel = '稳定运行';
-    if (!targetTime) {
+    if (timer.status === 'paused_unanswered' || timer.paused) {
+        status = 'paused';
+        statusLabel = '未回复上限暂停';
+    } else if (!targetTime) {
         status = 'unknown';
         statusLabel = '待确认';
     } else if (remainingSeconds <= 0) {
@@ -104,7 +107,9 @@ function resolveStatusTimerCard(timer, nowMs, displayTimezone) {
         ? '沉默重置型'
         : (isGroupSession ? '群自动触发' : '私聊自动触发');
     const sourceModeLabel = resolveSourceModeLabel(timer.source_mode);
-    const countdownText = targetTime
+    const countdownText = status === 'paused'
+        ? (timer.inactive_reason || '等待用户回复后恢复')
+        : targetTime
         ? (remainingSeconds > 0 ? `${formatDuration(remainingSeconds, { compact: true, maxUnits: 3 })} 后到期` : '等待下一轮刷新确认')
         : '暂无有效目标时间';
     const sessionIdText = String(timer.session_id || '');
@@ -142,7 +147,7 @@ function StatusTimerCard({ timer, displayTimezone, nowMs, resetHint }) {
     const chipColor = Number(meta.unanswered_count ?? 0) > 0 ? 'warning' : 'default';
 
     return (
-        <div className={`card status-timer-card ${meta.accentClass} ${meta.status === 'urgent' ? 'is-urgent' : ''} ${meta.status === 'expired' ? 'is-expired' : ''} ${resetHint ? 'is-resetting' : ''}`}>
+        <div className={`card status-timer-card ${meta.accentClass} ${meta.status === 'urgent' ? 'is-urgent' : ''} ${meta.status === 'expired' ? 'is-expired' : ''} ${meta.status === 'paused' ? 'is-paused' : ''} ${resetHint ? 'is-resetting' : ''}`}>
             <div className="status-timer-card-top">
                 <div className="status-timer-title-block">
                     <Typography variant="subtitle2" className="status-timer-kicker">
@@ -263,6 +268,14 @@ function StatusView({ onRefresh }) {
     const pluginRunning = Boolean(status.running);
     const autoTriggerCards = Array.isArray(status.auto_trigger_cards) ? status.auto_trigger_cards : [];
     const groupTimerCards = Array.isArray(status.group_timer_cards) ? status.group_timer_cards : [];
+    const richContent = status.rich_content || {};
+    const richLastResult = richContent.last_result === 'success'
+        ? '最近成功'
+        : richContent.last_result === 'failure'
+            ? '最近失败'
+            : richContent.last_result === 'disabled'
+                ? '已跳过'
+                : '暂无记录';
     // 合并并去重所有会话计时器，保证一个会话最多出现一张最关键卡片。
     const timerCards = dedupeStatusTimerCards([...groupTimerCards, ...autoTriggerCards]);
     const timerSections = [
@@ -452,6 +465,33 @@ function StatusView({ onRefresh }) {
                 </div>
 
                 <div className="span-12">
+                    <div className="card status-panel-card">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+                            <div className="status-panel-icon status-panel-icon-blue">∑</div>
+                            <div>
+                                <Typography variant="h6" sx={{ fontWeight: 700 }}>表格与公式转图</Typography>
+                                <Typography variant="body2" color="text.secondary">展示统一分段器和富内容渲染器的实际运行结果。</Typography>
+                            </div>
+                        </Box>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: { xs: 0, md: 3 } }}>
+                            <div className="status-metric-list">
+                                <StatusMetricRow label="统一消息处理" value={richContent.enabled ? '已启用' : '已关闭'} status={richContent.enabled ? 'success' : 'error'} />
+                                <StatusMetricRow label="自动转图" value={richContent.rich_render_enabled ? '已启用' : '已关闭'} status={richContent.rich_render_enabled ? 'success' : 'error'} />
+                            </div>
+                            <div className="status-metric-list">
+                                <StatusMetricRow label="渲染策略" value={richContent.use_network ? '优先网络渲染' : '本地渲染'} />
+                                <StatusMetricRow label="渲染模板" value={richContent.template_name || 'base'} />
+                            </div>
+                            <div className="status-metric-list">
+                                <StatusMetricRow label="累计结果" value={`成功 ${Number(richContent.render_successes || 0)} / 失败 ${Number(richContent.render_failures || 0)} / 跳过 ${Number(richContent.render_skipped || 0)}`} />
+                                <StatusMetricRow label="最近结果" value={`${richLastResult}${richContent.last_kind ? ` · ${richContent.last_kind}` : ''}`} status={richContent.last_result === 'failure' ? 'error' : richContent.last_result === 'success' ? 'success' : ''} />
+                                {richContent.last_error ? <StatusMetricRow label="最近错误" value={richContent.last_error} status="error" /> : null}
+                            </div>
+                        </Box>
+                    </div>
+                </div>
+
+                <div className="span-12">
                     <div className="status-timers-section">
                         <Box className="status-timers-header-row">
                             <div>
@@ -529,4 +569,3 @@ function StatusView({ onRefresh }) {
 // 暴露为全局视图组件，供应用入口按当前路由态切换展示。
 window.StatusView = StatusView;
 })();
-
