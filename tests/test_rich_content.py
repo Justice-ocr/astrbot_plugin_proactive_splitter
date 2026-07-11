@@ -16,13 +16,37 @@ def test_display_and_inline_math_are_promoted():
     assert "$x^2 + y^2 = z^2$" in blocks[1].content
 
 
-def test_unicode_formula_line_is_promoted():
+def test_qq_safe_unicode_math_stays_as_text():
     blocks = extract_content_blocks("结论如下：\n∫_0^1 x dx = 1/2\n结束。")
-    assert [block.kind for block in blocks] == ["text", "math", "text"]
+    assert len(blocks) == 1
+    assert blocks[0].kind == "text"
 
 
-def test_common_pi_and_superscript_formula_is_promoted():
-    blocks = extract_content_blocks("圆面积：A = πr²\n")
+def test_qq_safe_equations_and_symbols_stay_as_text():
+    text = "圆面积：A = πr²\nx <= y\na + b -> c\n温度约为 20±2℃\n"
+    blocks = extract_content_blocks(text)
+    assert len(blocks) == 1
+    assert blocks[0].kind == "text"
+
+
+def test_hardware_recommendations_stay_as_qq_text():
+    lines = [
+        "频繁无故重启、报 hardware_ram 类错误 → 优先 RMA/换货",
+        "默认：OCCT / Prime95 + AIDA",
+        "7×24 开服：优先稳定，别赌体质；到手就做压力测试",
+        "5600XT ≈ 5600X 的小幅提频版，对你这种 Fabric 原版主电很合适",
+        "首选：DDR5-6000 32GB（16×2）CL30，带 AMD EXPO",
+        "主板：B650 / B850 入门板即可，进 BIOS 打开 EXPO",
+        "要单核尽量贴 7840HS，且只开服 → Ryzen 5 7500F",
+    ]
+    for line in lines:
+        blocks = extract_content_blocks(line)
+        assert len(blocks) == 1
+        assert blocks[0].kind == "text"
+
+
+def test_explicit_latex_command_is_promoted():
+    blocks = extract_content_blocks(r"结果：\frac{1}{2}" + "\n")
     assert len(blocks) == 1
     assert blocks[0].kind == "math"
 

@@ -22,18 +22,6 @@ _LATEX_COMMAND_RE = re.compile(
     r"\\(?:frac|sqrt|sum|prod|int|lim|log|sin|cos|tan|alpha|beta|gamma|"
     r"theta|lambda|mu|pi|sigma|phi|omega|begin|left|right)\b"
 )
-_UNICODE_MATH_RE = re.compile(
-    r"[∑∏∫√∞≈≠≤≥±×÷∂∇∈∉⊂⊆⊃⊇∪∩∧∨¬→⇒↔⇔∝∴∵⊥∥"
-    r"πΠΔθΘλΛμσΣφΦωΩ²³ⁿ₀₁₂₃₄₅₆₇₈₉]"
-)
-_EQUATION_RE = re.compile(
-    r"(?:^|\s)[A-Za-zΑ-Ωα-ω][A-Za-zΑ-Ωα-ω0-9_{}^]*\s*"
-    r"(?:=|<=|>=|!=|≈|≠|≤|≥)\s*[^=\n]+"
-)
-_ASCII_EXPRESSION_RE = re.compile(
-    r"\b[A-Za-z][A-Za-z0-9_{}^]*\s*(?:\+|-|\*|/|\^|->|=>)\s*"
-    r"[A-Za-z0-9({]"
-)
 
 
 def _is_table_start(lines: list[str], index: int) -> bool:
@@ -61,15 +49,13 @@ def _display_math_end(stripped: str) -> str | None:
 
 
 def contains_math(text: str) -> bool:
-    """Return whether a line or paragraph contains a formula-like expression."""
+    """Return whether text contains explicit LaTeX that QQ cannot render."""
     stripped = text.strip()
     if not stripped:
         return False
     if _INLINE_MATH_RE.search(text):
         return True
-    if _LATEX_COMMAND_RE.search(text) or _UNICODE_MATH_RE.search(text):
-        return True
-    return bool(_EQUATION_RE.search(text) or _ASCII_EXPRESSION_RE.search(text))
+    return bool(_LATEX_COMMAND_RE.search(text))
 
 
 def _append_block(blocks: list[ContentBlock], kind: str, content: str) -> None:

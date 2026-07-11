@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.5.0-brightgreen" alt="v1.5.0">
+    <img src="https://img.shields.io/badge/Version-v1.5.1-brightgreen" alt="v1.5.1">
   </p>
 </div>
 
@@ -93,8 +93,8 @@
 - `\(...\)` 和 `\[...\]`。
 - `\begin{...} ... \end{...}` LaTeX 环境。
 - `\frac`、`\sqrt`、`\sum`、`\int` 等常用 LaTeX 命令。
-- `∑`、`∫`、`√`、`∞`、`≈`、`≤`、`≥`、`π`、上标和下标等常见数学符号。
-- `x = y`、`a + b`、`x -> y` 等公式形式。
+
+不会转图：QQ 能直接显示的 `∑`、`∫`、`π`、`≤`、`→`、`×`、上标/下标等 Unicode 字符，以及 `x = y`、`a + b`、`B650 / B850` 这类普通文本算式。
 
 示例：
 
@@ -360,9 +360,9 @@ password = 空
 
 - 表格识别要求存在标准 Markdown 表头分隔行，例如 `| --- | --- |`。
 - 行内公式所在的整行会渲染为图片，而不是只渲染 `$...$` 中的局部内容。
-- 数学符号检测使用启发式规则，特殊文本可能产生误判；可以关闭 `enable_rich_render`。
-- 本地文转图效果取决于 AstrBot 的本地渲染器、字体和运行环境。
-- 复杂 LaTeX 是否完整显示取决于当前 AstrBot 文转图模板。
+- 只有明确的 LaTeX 语法和 Markdown 表格会触发转图；普通 Unicode 数学符号和文本算式保持原样发送。
+- 本地文转图效果取决于 PillowMD、字体和运行环境。
+- 复杂 LaTeX 是否完整显示取决于 PillowMD 和 pillowlatex 的语法支持。
 - AstrBot 版本未提供 `register_web_api` 时，Plugin Page 后端不会注册，但独立 WebUI 和核心主动消息功能仍可使用。
 - 只有 `session_list` 中明确配置的会话会启用主动消息；统一分段器的作用范围由自己的作用域、黑白名单和群聊开关控制。
 

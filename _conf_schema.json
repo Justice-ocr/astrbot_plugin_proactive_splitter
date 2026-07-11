@@ -698,7 +698,7 @@
                 "description": "表格和公式自动转图片",
                 "type": "bool",
                 "default": true,
-                "hint": "在分段前识别 Markdown 表格、LaTeX 和常见数学符号；渲染失败时完整保留原文"
+                "hint": "在分段前识别 Markdown 表格和明确的 LaTeX 语法；QQ 可直接显示的普通数学符号与算式保持文本"
             },
             "inject_rich_prompt": {
                 "description": "提示模型使用标准 Markdown/LaTeX",

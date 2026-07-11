@@ -5,6 +5,12 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+## v1.5.1 - 收紧表格与公式转图识别
+
+- 不再将 `∑`、`π`、`≤`、`→`、上标/下标等 QQ 可直接显示的 Unicode 字符自动转图。
+- 不再将 `x = y`、`a + b`、`x -> y` 等普通文本算式误判为公式。
+- 仅对 Markdown 表格、明确的 LaTeX 定界格式和 LaTeX 命令执行转图。
+
 ## v1.5.0 - PillowMD 本地无浏览器转图
 
 - 合入 `astrbot_plugin_nobrowser_markdown_to_pic` 的 PillowMD 渲染能力，替代 AstrBot `html_renderer`。
