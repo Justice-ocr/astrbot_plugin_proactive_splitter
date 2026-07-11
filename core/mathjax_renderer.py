@@ -126,25 +126,50 @@ class MathJaxRenderer:
                 )
         return next((path for path in candidates if path and Path(path).is_file()), None)
 
-    async def _install_browser(self) -> None:
+    async def _run_playwright_installer(
+        self, *arguments: str, timeout: int
+    ) -> None:
+        env = os.environ.copy()
+        env.setdefault("DEBIAN_FRONTEND", "noninteractive")
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
             "playwright",
-            "install",
-            "chromium-headless-shell",
+            *arguments,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         try:
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(), timeout=timeout
+            )
         except TimeoutError as exc:
             process.kill()
             await process.communicate()
-            raise RuntimeError("安装 Chromium 超时") from exc
+            raise RuntimeError(
+                f"Playwright {' '.join(arguments)} 执行超时"
+            ) from exc
         if process.returncode:
-            message = stderr.decode("utf-8", errors="ignore").strip()
-            raise RuntimeError(f"安装 Chromium 失败: {message[-500:]}")
+            output = (stdout + stderr).decode("utf-8", errors="ignore").strip()
+            raise RuntimeError(
+                f"Playwright {' '.join(arguments)} 失败: {output[-1000:]}"
+            )
+
+    async def _install_browser(self) -> None:
+        if sys.platform.startswith("linux"):
+            getuid = getattr(os, "geteuid", None)
+            if callable(getuid) and getuid() != 0:
+                raise RuntimeError(
+                    "Linux 缺少 Chromium 系统依赖且当前进程不是 root；请在宿主机执行 "
+                    "sudo python -m playwright install-deps chromium"
+                )
+            await self._run_playwright_installer(
+                "install-deps", "chromium", timeout=900
+            )
+        await self._run_playwright_installer(
+            "install", "chromium-headless-shell", timeout=600
+        )
 
     async def _launch_browser(self, settings: dict) -> None:
         _, async_playwright = self._load_dependencies()

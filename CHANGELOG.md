@@ -5,6 +5,12 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+## v1.6.1 - 修复 Linux Chromium 系统依赖安装
+
+- 修复只下载 Playwright Chromium、但未安装 `libnspr4` 等 Linux 动态库导致浏览器启动失败的问题。
+- Linux root/container 自动执行 `playwright install-deps chromium`，再安装 `chromium-headless-shell`。
+- Linux 非 root 环境返回可直接执行的宿主机安装命令。
+
 ## v1.6.0 - MathJax 公式引擎与整回复转图
 
 - 参考 `astrbot_plugin_math_render`，新增 MathJax 3 + Playwright 复杂公式渲染后端。

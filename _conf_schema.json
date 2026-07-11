@@ -766,10 +766,10 @@
                 "slider": {"min": 3, "max": 120, "step": 1}
             },
             "rich_render_mathjax_auto_install_browser": {
-                "description": "缺少 Chromium 时自动安装",
+                "description": "缺少 Chromium/系统库时自动安装",
                 "type": "bool",
                 "default": true,
-                "hint": "首次安装 chromium-headless-shell 约需下载 270 MB"
+                "hint": "Linux root/container 会先安装 Chromium 系统依赖；浏览器下载约 270 MB"
             },
             "rich_render_cache_ttl": {
                 "description": "临时图片保留时间（秒）",

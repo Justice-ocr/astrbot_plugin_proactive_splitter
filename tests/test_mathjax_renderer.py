@@ -1,3 +1,5 @@
+import asyncio
+import os
 import sys
 import types
 
@@ -56,3 +58,35 @@ def test_markdown_html_removes_executable_html(monkeypatch):
     assert "<img" not in rendered
     assert "内容" in rendered
     assert "$x$" in rendered
+
+
+def test_linux_root_installs_system_dependencies_before_browser(monkeypatch):
+    renderer = MathJaxRenderer()
+    calls = []
+
+    async def fake_installer(*arguments, timeout):
+        calls.append((arguments, timeout))
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(renderer, "_run_playwright_installer", fake_installer)
+    asyncio.run(renderer._install_browser())
+
+    assert calls[0][0] == ("install-deps", "chromium")
+    assert calls[1][0] == ("install", "chromium-headless-shell")
+
+
+def test_linux_non_root_returns_manual_dependency_command(monkeypatch):
+    renderer = MathJaxRenderer()
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(os, "geteuid", lambda: 1000, raising=False)
+
+    async def run():
+        try:
+            await renderer._install_browser()
+        except RuntimeError as exc:
+            assert "sudo python -m playwright install-deps chromium" in str(exc)
+        else:
+            raise AssertionError("expected RuntimeError")
+
+    asyncio.run(run())

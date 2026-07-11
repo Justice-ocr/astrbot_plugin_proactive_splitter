@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.6.0-brightgreen" alt="v1.6.0">
+    <img src="https://img.shields.io/badge/Version-v1.6.1-brightgreen" alt="v1.6.1">
   </p>
 </div>
 
@@ -296,7 +296,14 @@ default:GroupMessage:123456789
 
 公式占比按回复中非空白字符计算，只有被识别为明确 LaTeX 的内容计入公式字符；QQ 可直接显示的普通算式和 Unicode 数学符号不计入。
 
-MathJax 使用持久 Chromium 页面。首次缺少浏览器时会安装 `chromium-headless-shell`，下载量约 270 MB；浏览器和 MathJax 加载完成后会持续复用。本机测试冷启动约 4 秒，热渲染复杂公式约 56-63 ms，实际耗时取决于机器和网络。
+MathJax 使用持久 Chromium 页面。首次缺少浏览器时会安装 `chromium-headless-shell`，下载量约 270 MB；Linux root/container 还会自动运行 `playwright install-deps chromium` 安装 `libnspr4` 等系统库。浏览器和 MathJax 加载完成后会持续复用。本机测试冷启动约 4 秒，热渲染复杂公式约 56-63 ms，实际耗时取决于机器和网络。
+
+Linux 非 root 环境无法由插件自动安装系统包，需要在宿主机执行：
+
+```bash
+sudo python -m playwright install-deps chromium
+python -m playwright install chromium-headless-shell
+```
 
 ## 主动消息分段与普通回复分段的区别
 
