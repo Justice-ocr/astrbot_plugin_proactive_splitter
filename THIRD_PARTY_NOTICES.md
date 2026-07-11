@@ -12,7 +12,11 @@ This merged plugin is based on and interoperates with the following projects:
 - `luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic`, used as the
   reference implementation for local browser-free Markdown rendering.
 - `pillowmd` (`Monody-S/CustomMarkdownImage`, MIT), used to render Markdown
-  tables and LaTeX formulas to PNG files without Chromium.
+  tables to PNG files without Chromium.
+- `Whereis-Alice/astrbot_plugin_math_render`, used as the functional reference
+  for MathJax rendering, bare-LaTeX normalization and math-focused image cards.
+- `MathJax` (Apache-2.0) and `Microsoft Playwright` (Apache-2.0), used to render
+  complex LaTeX formulas in a persistent Chromium page.
 
 Upstream repositories:
 
@@ -21,3 +25,6 @@ Upstream repositories:
 - https://github.com/nuomicici/astrbot_plugin_splitter
 - https://github.com/luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic
 - https://github.com/Monody-S/CustomMarkdownImage
+- https://github.com/Whereis-Alice/astrbot_plugin_math_render
+- https://github.com/mathjax/MathJax
+- https://github.com/microsoft/playwright-python

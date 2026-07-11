@@ -479,13 +479,14 @@ function StatusView({ onRefresh }) {
                                 <StatusMetricRow label="自动转图" value={richContent.rich_render_enabled ? '已启用' : '已关闭'} status={richContent.rich_render_enabled ? 'success' : 'error'} />
                             </div>
                             <div className="status-metric-list">
-                                <StatusMetricRow label="渲染引擎" value="PillowMD（本地无浏览器）" />
+                                <StatusMetricRow label="渲染引擎" value="MathJax 3（公式）+ PillowMD（表格）" />
                                 <StatusMetricRow label="图片尺寸" value={`${Number(richContent.width || 1000)} px · 字号 ${Number(richContent.font_size || 25)}`} />
-                                <StatusMetricRow label="自定义样式" value={richContent.style_path || '默认样式'} />
+                                <StatusMetricRow label="整回复转图阈值" value={Number(richContent.full_reply_ratio_threshold || 0) <= 0 ? '已关闭' : `${Number(richContent.full_reply_ratio_threshold)}% · 每图 ${Number(richContent.full_reply_max_chars || 1600)} 字`} />
                             </div>
                             <div className="status-metric-list">
                                 <StatusMetricRow label="累计结果" value={`成功 ${Number(richContent.render_successes || 0)} / 失败 ${Number(richContent.render_failures || 0)} / 跳过 ${Number(richContent.render_skipped || 0)}`} />
                                 <StatusMetricRow label="最近结果" value={`${richLastResult}${richContent.last_kind ? ` · ${richContent.last_kind}` : ''}`} status={richContent.last_result === 'failure' ? 'error' : richContent.last_result === 'success' ? 'success' : ''} />
+                                <StatusMetricRow label="最近公式占比" value={richContent.last_math_ratio == null ? '暂无记录' : `${(Number(richContent.last_math_ratio) * 100).toFixed(1)}%${richContent.last_full_reply_rendered ? ` · 整体转图 ${Number(richContent.last_full_reply_images || 0)} 张` : ' · 未触发整体转图'}`} />
                                 <StatusMetricRow label="渲染耗时" value={richContent.last_duration_ms == null ? '暂无记录' : `最近 ${Number(richContent.last_duration_ms).toFixed(1)} ms · 平均 ${Number(richContent.average_duration_ms || 0).toFixed(1)} ms · 最大 ${Number(richContent.max_duration_ms || 0).toFixed(1)} ms`} />
                                 {richContent.last_error ? <StatusMetricRow label="最近错误" value={richContent.last_error} status="error" /> : null}
                             </div>

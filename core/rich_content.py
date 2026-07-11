@@ -26,6 +26,13 @@ _LATEX_COMMAND_RE = re.compile(
 )
 _CJK_OR_PUNCT_RE = re.compile(r"[\u3400-\u9fff，。；：！？、]")
 _NON_CJK_SEGMENT_RE = re.compile(r"[^\u3400-\u9fff，。；：！？、]+")
+_EXPLICIT_MATH_SPAN_RE = re.compile(
+    r"(?<!\\)\$\$.+?(?<!\\)\$\$|"
+    r"(?<![\\$])\$(?!\$).+?(?<![\\$])\$(?!\$)|"
+    r"\\\(.+?\\\)|\\\[.+?\\\]|"
+    r"\\begin\{([^}]+)\}.+?\\end\{\1\}",
+    re.DOTALL,
+)
 
 
 def _is_table_start(lines: list[str], index: int) -> bool:
@@ -63,7 +70,7 @@ def contains_math(text: str) -> bool:
 
 
 def normalize_math_markdown(text: str) -> str:
-    """Add delimiters to explicit but unwrapped LaTeX before PillowMD rendering."""
+    """Add delimiters to explicit but unwrapped LaTeX before MathJax rendering."""
     stripped = text.strip()
     if not stripped:
         return text
@@ -99,6 +106,87 @@ def normalize_math_markdown(text: str) -> str:
         return f"{leading}${content}${trailing}"
 
     return _NON_CJK_SEGMENT_RE.sub(wrap_latex_segment, stripped)
+
+
+def calculate_math_ratio(text: str) -> float:
+    """Return the share of non-whitespace reply characters in math blocks."""
+    total = sum(1 for char in text if not char.isspace())
+    if total == 0:
+        return 0.0
+    math_weight = 0
+    for block in extract_content_blocks(text):
+        if block.kind != "math":
+            continue
+        matches = list(_EXPLICIT_MATH_SPAN_RE.finditer(block.content))
+        if matches:
+            math_weight += sum(
+                sum(1 for char in match.group(0) if not char.isspace())
+                for match in matches
+            )
+            continue
+        segments = [
+            match.group(0)
+            for match in _NON_CJK_SEGMENT_RE.finditer(block.content)
+            if _LATEX_COMMAND_RE.search(match.group(0))
+        ]
+        math_weight += sum(
+            sum(1 for char in segment if not char.isspace()) for segment in segments
+        )
+    return min(1.0, math_weight / total)
+
+
+def _split_oversized_text(text: str, max_chars: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+    pieces: list[str] = []
+    remaining = text
+    while len(remaining) > max_chars:
+        window = remaining[: max_chars + 1]
+        candidates = [
+            window.rfind(separator)
+            for separator in ("\n\n", "\n", "。", "！", "？", ";", "；", ". ")
+        ]
+        split_at = max(candidates)
+        if split_at < max_chars // 3:
+            split_at = max_chars
+        else:
+            split_at += 2 if window[split_at : split_at + 2] in {"\n\n", ". "} else 1
+        pieces.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].lstrip()
+    if remaining.strip():
+        pieces.append(remaining.strip())
+    return pieces
+
+
+def split_rich_markdown_for_render(text: str, max_chars: int) -> list[str]:
+    """Split rich Markdown at semantic boundaries without breaking math or tables."""
+    max_chars = max(200, int(max_chars or 1600))
+    units: list[str] = []
+    for block in extract_content_blocks(text):
+        if block.kind == "math":
+            units.append(normalize_math_markdown(block.content))
+            continue
+        if block.kind == "table":
+            units.append(block.content.strip())
+            continue
+        paragraphs = re.split(r"(\n\s*\n)", block.content)
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                continue
+            units.extend(_split_oversized_text(paragraph.strip(), max_chars))
+
+    chunks: list[str] = []
+    current = ""
+    for unit in units:
+        separator = "\n\n" if current else ""
+        if current and len(current) + len(separator) + len(unit) > max_chars:
+            chunks.append(current.strip())
+            current = unit
+        else:
+            current += separator + unit
+    if current.strip():
+        chunks.append(current.strip())
+    return chunks
 
 
 def _append_block(blocks: list[ContentBlock], kind: str, content: str) -> None:

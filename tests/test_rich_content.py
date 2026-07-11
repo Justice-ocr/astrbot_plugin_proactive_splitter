@@ -1,6 +1,8 @@
 from core.rich_content import (
+    calculate_math_ratio,
     extract_content_blocks,
     normalize_math_markdown,
+    split_rich_markdown_for_render,
     smart_split_text,
 )
 
@@ -94,6 +96,35 @@ def test_dfrac_sentence_is_recognized_and_normalized():
     assert blocks[0].kind == "math"
     normalized = normalize_math_markdown(blocks[0].content)
     assert "$(\\dfrac{1}{a})$" in normalized
+
+
+def test_math_ratio_ignores_qq_safe_equations():
+    assert calculate_math_ratio("型号 i5-12400F，性能约等于 R5 5600X。") == 0
+
+
+def test_math_ratio_counts_detected_formula_content():
+    ratio = calculate_math_ratio("说明文字。\n$$x^2+y^2=z^2$$\n结论。")
+    assert 0.5 < ratio < 0.9
+
+
+def test_math_ratio_does_not_count_the_whole_prose_line():
+    ratio = calculate_math_ratio("这是一段较长的普通说明，只有这里是公式 $x^2+y^2=z^2$，后面仍是说明。")
+    assert 0.2 < ratio < 0.6
+
+
+def test_rich_markdown_split_keeps_math_and_table_atomic():
+    text = (
+        "第一段说明。" * 20
+        + "\n\n"
+        + "$$\n\\frac{1}{a}+\\frac{1}{b}=1\n$$\n\n"
+        + "| 项目 | 值 |\n| --- | --- |\n| A | 1 |\n\n"
+        + "最后一段说明文字比较长，需要进入下一张图片。" * 12
+    )
+    chunks = split_rich_markdown_for_render(text, 200)
+    assert len(chunks) >= 3
+    assert any("\\frac{1}{a}" in chunk for chunk in chunks)
+    assert any("| --- | --- |" in chunk for chunk in chunks)
+    assert all("\\frac{1}{a}" not in chunk or "\\frac{1}{b}" in chunk for chunk in chunks)
 
 
 def test_code_fence_does_not_trigger_math_detection():

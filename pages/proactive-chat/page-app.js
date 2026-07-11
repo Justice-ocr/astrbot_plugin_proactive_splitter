@@ -465,6 +465,9 @@
         var richDuration = rich.last_duration_ms == null
             ? "暂无记录"
             : "最近 " + Number(rich.last_duration_ms).toFixed(1) + " ms · 平均 " + Number(rich.average_duration_ms || 0).toFixed(1) + " ms · 最大 " + Number(rich.max_duration_ms || 0).toFixed(1) + " ms";
+        var richRatio = rich.last_math_ratio == null
+            ? "暂无记录"
+            : (Number(rich.last_math_ratio) * 100).toFixed(1) + "%" + (rich.last_full_reply_rendered ? " · 整体转图 " + Number(rich.last_full_reply_images || 0) + " 张" : " · 未触发整体转图");
         $("view-status").innerHTML = [
             '<div class="pc-grid metrics">',
             metric("插件状态", status.running ? "运行中" : "已停止", "版本 " + text(status.version, "...")),
@@ -488,11 +491,12 @@
             '<div class="pc-card"><div class="pc-card-title">表格与公式转图</div><div class="pc-list" style="margin-top:14px">',
             infoRow("统一消息处理", rich.enabled ? "已启用" : "已关闭"),
             infoRow("自动转图", rich.rich_render_enabled ? "已启用" : "已关闭"),
-            infoRow("渲染引擎", "PillowMD（本地无浏览器）"),
+            infoRow("渲染引擎", "MathJax 3（公式）+ PillowMD（表格）"),
             infoRow("图片尺寸", Number(rich.width || 1000) + " px · 字号 " + Number(rich.font_size || 25)),
-            infoRow("自定义样式", text(rich.style_path, "默认样式")),
+            infoRow("整回复转图阈值", Number(rich.full_reply_ratio_threshold || 0) <= 0 ? "已关闭" : Number(rich.full_reply_ratio_threshold) + "% · 每图 " + Number(rich.full_reply_max_chars || 1600) + " 字"),
             infoRow("累计结果", "成功 " + Number(rich.render_successes || 0) + " / 失败 " + Number(rich.render_failures || 0) + " / 跳过 " + Number(rich.render_skipped || 0)),
             infoRow("最近结果", richLastResult + (rich.last_kind ? " · " + rich.last_kind : "")),
+            infoRow("最近公式占比", richRatio),
             infoRow("渲染耗时", richDuration),
             rich.last_error ? infoRow("最近错误", rich.last_error) : "",
             '</div></div></div>'

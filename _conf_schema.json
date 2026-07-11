@@ -705,11 +705,25 @@
                 "type": "bool",
                 "default": true
             },
+            "rich_render_full_reply_math_ratio": {
+                "description": "整回复转图的公式占比阈值（%）",
+                "type": "int",
+                "default": 45,
+                "slider": {"min": 0, "max": 100, "step": 5},
+                "hint": "公式字符占有效文本字符达到该比例时，将整份回复转为图片；0 表示关闭"
+            },
+            "rich_render_full_reply_max_chars": {
+                "description": "整回复转图每张图片最大字符数",
+                "type": "int",
+                "default": 1600,
+                "slider": {"min": 400, "max": 5000, "step": 100},
+                "hint": "长回复优先按公式块、表格、空行和段落边界拆成多张图片"
+            },
             "rich_render_style_path": {
-                "description": "PillowMD 自定义样式目录",
+                "description": "表格 PillowMD 自定义样式目录",
                 "type": "string",
                 "default": "",
-                "hint": "留空使用 PillowMD 默认样式；路径不存在时保留原始文本"
+                "hint": "仅用于表格转图；留空使用 PillowMD 默认样式"
             },
             "rich_render_font_size": {
                 "description": "富内容图片正文字号",
@@ -718,13 +732,13 @@
                 "slider": {"min": 8, "max": 80, "step": 1}
             },
             "rich_render_width": {
-                "description": "富内容图片最大内容宽度",
+                "description": "公式/表格图片最大内容宽度",
                 "type": "int",
                 "default": 1000,
                 "slider": {"min": 200, "max": 2400, "step": 50}
             },
             "rich_render_auto_page": {
-                "description": "长内容自动分页排版",
+                "description": "表格长内容自动分页排版",
                 "type": "bool",
                 "default": false
             },
@@ -732,6 +746,30 @@
                 "description": "使用透明背景并移除装饰",
                 "type": "bool",
                 "default": false
+            },
+            "rich_render_scale": {
+                "description": "MathJax 图片清晰度倍率",
+                "type": "int",
+                "default": 2,
+                "slider": {"min": 1, "max": 3, "step": 1}
+            },
+            "rich_render_mathjax_cdn_url": {
+                "description": "MathJax 资源地址",
+                "type": "string",
+                "default": "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js",
+                "hint": "浏览器上下文会缓存资源；可替换为自建或本地可访问地址"
+            },
+            "rich_render_mathjax_timeout": {
+                "description": "MathJax 单次渲染超时（秒）",
+                "type": "int",
+                "default": 20,
+                "slider": {"min": 3, "max": 120, "step": 1}
+            },
+            "rich_render_mathjax_auto_install_browser": {
+                "description": "缺少 Chromium 时自动安装",
+                "type": "bool",
+                "default": true,
+                "hint": "首次安装 chromium-headless-shell 约需下载 270 MB"
             },
             "rich_render_cache_ttl": {
                 "description": "临时图片保留时间（秒）",

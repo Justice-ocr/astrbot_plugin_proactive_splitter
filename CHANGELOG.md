@@ -5,6 +5,15 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+## v1.6.0 - MathJax 公式引擎与整回复转图
+
+- 参考 `astrbot_plugin_math_render`，新增 MathJax 3 + Playwright 复杂公式渲染后端。
+- 公式改用 MathJax，表格继续使用 PillowMD，支持 `\Biggl`、矩阵、多层根式和复杂嵌套。
+- 新增整回复转图公式占比阈值；达到阈值时将说明文字、公式和表格一起转图。
+- 长回复按公式块、表格、空行、段落和句子边界拆为多张图片，避免截断公式。
+- 复用持久 Chromium 页面和 MathJax 实例，本机热渲染复杂公式约 56-63 ms。
+- 管理端新增最近公式占比、整回复触发状态和图片张数诊断。
+
 ## v1.5.2 - 修复未定界 LaTeX 源码转图
 
 - 修复 `\frac`、`\left`、`\lim` 等未使用 `$` / `$$` 包裹时只生成源码文字图片的问题。

@@ -15,11 +15,14 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 
+from .mathjax_renderer import MathJaxRenderer
 from .pillowmd_renderer import PillowMarkdownRenderer
 from .rich_content import (
     build_split_pattern,
+    calculate_math_ratio,
     extract_content_blocks,
     normalize_math_markdown,
+    split_rich_markdown_for_render,
     smart_split_text,
 )
 
@@ -40,10 +43,16 @@ class UnifiedSplitterMixin:
             "enabled": bool(settings.get("enable", True)),
             "split_enabled": bool(settings.get("enable_split", True)),
             "rich_render_enabled": bool(settings.get("enable_rich_render", True)),
-            "engine": "pillowmd",
+            "engine": "mathjax+pillowmd",
             "style_path": str(settings.get("rich_render_style_path", "") or ""),
             "font_size": int(settings.get("rich_render_font_size", 25) or 25),
             "width": int(settings.get("rich_render_width", 1000) or 1000),
+            "full_reply_ratio_threshold": float(
+                settings.get("rich_render_full_reply_math_ratio", 45) or 0
+            ),
+            "full_reply_max_chars": int(
+                settings.get("rich_render_full_reply_max_chars", 1600) or 1600
+            ),
             "render_attempts": int(stats.get("render_attempts", 0) or 0),
             "render_successes": int(stats.get("render_successes", 0) or 0),
             "render_failures": int(stats.get("render_failures", 0) or 0),
@@ -55,6 +64,16 @@ class UnifiedSplitterMixin:
             "last_duration_ms": stats.get("last_duration_ms"),
             "average_duration_ms": stats.get("average_duration_ms"),
             "max_duration_ms": stats.get("max_duration_ms"),
+            "last_math_ratio": stats.get("last_math_ratio"),
+            "last_full_reply_rendered": bool(
+                stats.get("last_full_reply_rendered", False)
+            ),
+            "last_full_reply_images": int(
+                stats.get("last_full_reply_images", 0) or 0
+            ),
+            "full_reply_render_count": int(
+                stats.get("full_reply_render_count", 0) or 0
+            ),
             "last_segments_count": int(stats.get("last_segments_count", 0) or 0),
             "last_processed_at": stats.get("last_processed_at"),
         }
@@ -191,6 +210,9 @@ class UnifiedSplitterMixin:
 
     async def _build_unified_segments(self, event: Any, chain: list, settings: dict) -> list[list]:
         chain = self._merge_adjacent_plain(chain)
+        full_reply_segments = await self._maybe_render_full_reply(chain, settings)
+        if full_reply_segments is not None:
+            return full_reply_segments
         segments: list[list] = []
         buffer: list = []
 
@@ -238,6 +260,65 @@ class UnifiedSplitterMixin:
         if buffer:
             segments.append(buffer)
         return [segment for segment in segments if segment]
+
+    async def _maybe_render_full_reply(
+        self, chain: list, settings: dict
+    ) -> list[list] | None:
+        if not settings.get("enable_rich_render", True):
+            return None
+        threshold_percent = float(
+            settings.get("rich_render_full_reply_math_ratio", 45) or 0
+        )
+        if threshold_percent <= 0:
+            return None
+        if any(not isinstance(component, (Plain, Reply)) for component in chain):
+            return None
+
+        text = "".join(
+            self._clean_and_replace(component.text, settings)
+            for component in chain
+            if isinstance(component, Plain)
+        )
+        ratio = calculate_math_ratio(text)
+        diagnostics = self.get_unified_splitter_diagnostics()
+        self._record_unified_splitter_diagnostic(
+            last_math_ratio=round(ratio, 4),
+            last_full_reply_rendered=False,
+            last_full_reply_images=0,
+        )
+        if ratio * 100 < min(threshold_percent, 100):
+            return None
+
+        chunks = split_rich_markdown_for_render(
+            text,
+            int(settings.get("rich_render_full_reply_max_chars", 1600) or 1600),
+        )
+        if not chunks:
+            return None
+
+        segments: list[list] = []
+        replies = [component for component in chain if isinstance(component, Reply)]
+        image_count = 0
+        for index, chunk in enumerate(chunks):
+            component = await self._render_rich_block(chunk, "full_reply", settings)
+            if isinstance(component, Image):
+                image_count += 1
+            segment = [component]
+            if index == 0 and replies:
+                segment = replies + segment
+            segments.append(segment)
+
+        self._record_unified_splitter_diagnostic(
+            last_full_reply_rendered=image_count > 0,
+            last_full_reply_images=image_count,
+            full_reply_render_count=diagnostics["full_reply_render_count"]
+            + (1 if image_count > 0 else 0),
+        )
+        logger.info(
+            f"[Proactive Splitter] 公式占比 {ratio * 100:.1f}%，"
+            f"整份回复已生成 {image_count}/{len(chunks)} 张图片。"
+        )
+        return segments
 
     @staticmethod
     def _merge_adjacent_plain(chain: list) -> list:
@@ -388,10 +469,11 @@ class UnifiedSplitterMixin:
         )
         started_at = time.perf_counter()
         try:
-            renderer = getattr(self, "_rich_renderer", None)
+            renderer_attr = "_table_renderer" if kind == "table" else "_math_renderer"
+            renderer = getattr(self, renderer_attr, None)
             if renderer is None:
-                renderer = PillowMarkdownRenderer()
-                setattr(self, "_rich_renderer", renderer)
+                renderer = PillowMarkdownRenderer() if kind == "table" else MathJaxRenderer()
+                setattr(self, renderer_attr, renderer)
             render_text = normalize_math_markdown(text) if kind == "math" else text
             path = await renderer.render(render_text, settings)
             duration_ms = (time.perf_counter() - started_at) * 1000
@@ -426,11 +508,16 @@ class UnifiedSplitterMixin:
             return Plain(text=text)
 
     async def cleanup_unified_splitter_resources(self) -> None:
-        renderer = getattr(self, "_rich_renderer", None)
-        if renderer is None:
-            return
-        setattr(self, "_rich_renderer", None)
-        await renderer.close()
+        renderers = []
+        for attr in ("_math_renderer", "_table_renderer", "_rich_renderer"):
+            renderer = getattr(self, attr, None)
+            if renderer is not None and renderer not in renderers:
+                renderers.append(renderer)
+            setattr(self, attr, None)
+        if renderers:
+            await asyncio.gather(
+                *(renderer.close() for renderer in renderers), return_exceptions=True
+            )
 
     def _unified_delay(self, next_segment: list, settings: dict, event: Any) -> float:
         text = "".join(component.text for component in next_segment if isinstance(component, Plain))

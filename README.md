@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.5.2-brightgreen" alt="v1.5.2">
+    <img src="https://img.shields.io/badge/Version-v1.6.0-brightgreen" alt="v1.6.0">
   </p>
 </div>
 
@@ -27,6 +27,7 @@
 - [DBJD-CR/astrbot_plugin_proactive_chat](https://github.com/DBJD-CR/astrbot_plugin_proactive_chat)
 - [nuomicici/astrbot_plugin_splitter](https://github.com/nuomicici/astrbot_plugin_splitter)
 - [luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic](https://github.com/luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic)
+- [Whereis-Alice/astrbot_plugin_math_render](https://github.com/Whereis-Alice/astrbot_plugin_math_render)
 
 当前仓库：[Justice-ocr/astrbot_plugin_proactive_splitter](https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter)
 
@@ -115,9 +116,11 @@ $$
 
 处理结果：
 
-1. 整个表格或公式块交给 PillowMD 在本地无浏览器渲染。
+1. 复杂公式交给 MathJax 3 + Playwright 渲染，Markdown 表格交给 PillowMD 渲染。
 2. 渲染成功后生成临时 PNG，并作为独立图片消息发送。
 3. 渲染失败时保留为一个完整文本块，不再对其分段。
+
+当公式字符占有效文本字符的比例达到配置阈值时，插件会把说明文字、公式和表格作为完整 Markdown 一起转图。长回复优先按公式块、表格、空行和段落边界拆成多张图，不会从公式中间截断。
 
 代码围栏中的 `$`、数学符号和竖线不会触发表格或公式识别。
 
@@ -278,14 +281,22 @@ default:GroupMessage:123456789
 | --- | ---: | --- |
 | `enable_rich_render` | `true` | 启用表格和公式转图 |
 | `inject_rich_prompt` | `true` | 提示模型使用标准 Markdown/LaTeX |
-| `rich_render_style_path` | 空 | PillowMD 自定义样式目录，留空使用默认样式 |
+| `rich_render_full_reply_math_ratio` | `45` | 公式占比达到该百分比时整回复转图；`0` 关闭 |
+| `rich_render_full_reply_max_chars` | `1600` | 整回复转图时每张图片的目标最大字符数 |
+| `rich_render_style_path` | 空 | 表格使用的 PillowMD 自定义样式目录 |
 | `rich_render_font_size` | `25` | 图片正文字号 |
 | `rich_render_width` | `1000` | 图片最大内容宽度（像素） |
-| `rich_render_auto_page` | `false` | 长内容自动分页排版 |
+| `rich_render_scale` | `2` | MathJax 图片清晰度倍率 |
+| `rich_render_mathjax_cdn_url` | jsDelivr MathJax 3 | MathJax 脚本地址 |
+| `rich_render_mathjax_timeout` | `20` | 单次公式渲染超时（秒） |
+| `rich_render_mathjax_auto_install_browser` | `true` | 缺少 Chromium 时自动安装 |
+| `rich_render_auto_page` | `false` | 表格长内容自动分页排版 |
 | `rich_render_transparent_background` | `false` | 使用透明背景并移除装饰 |
 | `rich_render_cache_ttl` | `180` | 临时 PNG 保留时间（秒） |
 
-PillowMD 渲染在插件进程内完成，不会把表格或公式文本发送到远程文转图端点，也不需要 Chromium。首次渲染需要加载字体和公式组件，之后通常会更快。
+公式占比按回复中非空白字符计算，只有被识别为明确 LaTeX 的内容计入公式字符；QQ 可直接显示的普通算式和 Unicode 数学符号不计入。
+
+MathJax 使用持久 Chromium 页面。首次缺少浏览器时会安装 `chromium-headless-shell`，下载量约 270 MB；浏览器和 MathJax 加载完成后会持续复用。本机测试冷启动约 4 秒，热渲染复杂公式约 56-63 ms，实际耗时取决于机器和网络。
 
 ## 主动消息分段与普通回复分段的区别
 
@@ -321,9 +332,11 @@ data/plugin_data/astrbot_plugin_proactive_chat/
 
 最近消息和提示词会发送给当前会话配置的 LLM 提供商，这是生成主动消息和预测下次触发时间所必需的。
 
-### 本地富内容转图
+### 富内容转图
 
-表格和公式由 PillowMD 在本地渲染为临时 PNG，不会发送到外部文转图服务。图片会在 `rich_render_cache_ttl` 到期或插件停止时删除。
+表格由 PillowMD 在本地渲染。公式由本地 Chromium 中的 MathJax 渲染，默认会从 `rich_render_mathjax_cdn_url` 加载 MathJax 脚本，因此首次加载会访问对应地址；公式正文不会提交给远程文转图 API。浏览器上下文会缓存脚本资源。
+
+生成的临时图片会在 `rich_render_cache_ttl` 到期或插件停止时删除。
 
 ### 通知中心
 
@@ -364,8 +377,9 @@ password = 空
 - 行内公式所在的整行会渲染为图片，而不是只渲染 `$...$` 中的局部内容。
 - 缺少 `$` / `$$` 的明确 LaTeX 命令会在渲染前自动补齐定界符。
 - 只有明确的 LaTeX 语法和 Markdown 表格会触发转图；普通 Unicode 数学符号和文本算式保持原样发送。
-- 本地文转图效果取决于 PillowMD、字体和运行环境。
-- 复杂 LaTeX 是否完整显示取决于 PillowMD 和 pillowlatex 的语法支持。
+- 表格效果取决于 PillowMD，复杂公式效果取决于 MathJax 3 的 TeX 支持。
+- 无效命令（例如模型误写的 `\Ve`）仍需模型修正为有效 LaTeX，渲染器不会猜测命令含义。
+- 首次公式渲染需要启动 Chromium 并加载 MathJax；后续复用持久页面。
 - AstrBot 版本未提供 `register_web_api` 时，Plugin Page 后端不会注册，但独立 WebUI 和核心主动消息功能仍可使用。
 - 只有 `session_list` 中明确配置的会话会启用主动消息；统一分段器的作用范围由自己的作用域、黑白名单和群聊开关控制。
 

@@ -117,12 +117,14 @@ class FakeContext:
 class Plugin(UnifiedSplitterMixin):
     def __init__(self):
         self.context = FakeContext()
-        self._rich_renderer = renderer
+        self._math_renderer = renderer
+        self._table_renderer = renderer
         self.config = {
             "unified_splitter_settings": {
                 "enable": True,
                 "enable_split": True,
                 "enable_rich_render": True,
+                "rich_render_full_reply_math_ratio": 0,
                 "split_scope": "llm_only",
                 "split_mode": "simple",
                 "split_chars": ["。"],
@@ -191,6 +193,54 @@ def test_disabled_rich_render_is_counted_as_skipped():
     assert diagnostics["render_attempts"] == 0
     assert diagnostics["render_skipped"] == 1
     assert diagnostics["last_result"] == "disabled"
+
+
+def test_formula_heavy_reply_is_rendered_as_one_complete_image():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"].update(
+        {
+            "rich_render_full_reply_math_ratio": 35,
+            "rich_render_full_reply_max_chars": 1600,
+        }
+    )
+    event = FakeEvent("推导如下。\n$$\\frac{1}{a}+\\frac{1}{b}=1$$\n因此结论成立。")
+    asyncio.run(plugin.unified_on_decorating_result(event))
+
+    assert len(renderer.calls) == 1
+    assert "推导如下" in renderer.calls[0]
+    assert "\\frac{1}{a}" in renderer.calls[0]
+    assert len(event.result.chain) == 1
+    assert isinstance(event.result.chain[0], Image)
+    diagnostics = plugin.get_unified_splitter_diagnostics()
+    assert diagnostics["last_full_reply_rendered"] is True
+    assert diagnostics["last_full_reply_images"] == 1
+    assert diagnostics["last_math_ratio"] >= 0.35
+
+
+def test_long_formula_heavy_reply_is_split_into_multiple_images():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"].update(
+        {
+            "rich_render_full_reply_math_ratio": 20,
+            "rich_render_full_reply_max_chars": 200,
+        }
+    )
+    paragraphs = [
+        f"第 {index} 步推导：$\\frac{{{index}}}{{n}} + \\sqrt{{x_{index}^2+y_{index}^2}} = z_{index}$。"
+        + "补充说明。" * 12
+        for index in range(1, 5)
+    ]
+    event = FakeEvent("\n\n".join(paragraphs))
+    asyncio.run(plugin.unified_on_decorating_result(event))
+
+    all_units = [components for _, components in plugin.context.sent]
+    all_units.append(event.result.chain)
+    assert len(renderer.calls) > 1
+    assert all(any(isinstance(item, Image) for item in unit) for unit in all_units)
+    diagnostics = plugin.get_unified_splitter_diagnostics()
+    assert diagnostics["last_full_reply_images"] == len(renderer.calls)
 
 
 def test_reverse_replace_is_applied_to_user_prompt():
