@@ -1,4 +1,8 @@
-from core.rich_content import extract_content_blocks, smart_split_text
+from core.rich_content import (
+    extract_content_blocks,
+    normalize_math_markdown,
+    smart_split_text,
+)
 
 
 def test_markdown_table_is_one_rich_block():
@@ -49,6 +53,47 @@ def test_explicit_latex_command_is_promoted():
     blocks = extract_content_blocks(r"结果：\frac{1}{2}" + "\n")
     assert len(blocks) == 1
     assert blocks[0].kind == "math"
+
+
+def test_plain_square_brackets_around_latex_become_one_math_block():
+    text = "因为条件成立，所以\n[\n\\frac{1}{a} > \\frac{1}{b} > 0\n]\n结论成立。"
+    blocks = extract_content_blocks(text)
+    assert [block.kind for block in blocks] == ["text", "math", "text"]
+    assert blocks[1].content.strip() == r"\frac{1}{a} > \frac{1}{b} > 0"
+
+
+def test_unwrapped_latex_expression_gets_display_delimiters():
+    normalized = normalize_math_markdown(r"\frac{1}{a} > \frac{1}{b} > 0")
+    assert normalized == "$$\n\\frac{1}{a} > \\frac{1}{b} > 0\n$$"
+
+
+def test_parenthesis_and_bracket_latex_delimiters_are_normalized_for_pillowmd():
+    source = r"行内 \(x^2\)，行间 \[\frac{1}{2}\]"
+    normalized = normalize_math_markdown(source)
+    assert "$x^2$" in normalized
+    assert "$$\n\\frac{1}{2}\n$$" in normalized
+
+
+def test_latex_environment_gets_display_delimiters():
+    source = "\\begin{aligned}\nx &= y\\\\\ny &= z\n\\end{aligned}"
+    normalized = normalize_math_markdown(source)
+    assert normalized.startswith("$$\n\\begin{aligned}")
+    assert normalized.endswith("\\end{aligned}\n$$")
+
+
+def test_unwrapped_latex_inside_chinese_text_gets_inline_delimiters():
+    source = r"由 (0<a<b) 得 (0<\frac{a}{b}<1)，于是 (\left(\frac{a}{b}\right)^n\to 0)。"
+    normalized = normalize_math_markdown(source)
+    assert "$(0<\\frac{a}{b}<1)$" in normalized
+    assert "$(\\left(\\frac{a}{b}\\right)^n\\to 0)$" in normalized
+
+
+def test_dfrac_sentence_is_recognized_and_normalized():
+    source = r"这里较大的是 (\dfrac{1}{a})，故极限为 (\dfrac{1}{a})。"
+    blocks = extract_content_blocks(source)
+    assert blocks[0].kind == "math"
+    normalized = normalize_math_markdown(blocks[0].content)
+    assert "$(\\dfrac{1}{a})$" in normalized
 
 
 def test_code_fence_does_not_trigger_math_detection():

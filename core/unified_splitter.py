@@ -15,8 +15,13 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 
-from .rich_content import build_split_pattern, extract_content_blocks, smart_split_text
 from .pillowmd_renderer import PillowMarkdownRenderer
+from .rich_content import (
+    build_split_pattern,
+    extract_content_blocks,
+    normalize_math_markdown,
+    smart_split_text,
+)
 
 
 class UnifiedSplitterMixin:
@@ -387,7 +392,8 @@ class UnifiedSplitterMixin:
             if renderer is None:
                 renderer = PillowMarkdownRenderer()
                 setattr(self, "_rich_renderer", renderer)
-            path = await renderer.render(text, settings)
+            render_text = normalize_math_markdown(text) if kind == "math" else text
+            path = await renderer.render(render_text, settings)
             duration_ms = (time.perf_counter() - started_at) * 1000
             diagnostics = self.get_unified_splitter_diagnostics()
             successes = diagnostics["render_successes"] + 1

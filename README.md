@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.5.1-brightgreen" alt="v1.5.1">
+    <img src="https://img.shields.io/badge/Version-v1.5.2-brightgreen" alt="v1.5.2">
   </p>
 </div>
 
@@ -95,6 +95,8 @@
 - `\frac`、`\sqrt`、`\sum`、`\int` 等常用 LaTeX 命令。
 
 不会转图：QQ 能直接显示的 `∑`、`∫`、`π`、`≤`、`→`、`×`、上标/下标等 Unicode 字符，以及 `x = y`、`a + b`、`B650 / B850` 这类普通文本算式。
+
+模型偶尔会输出缺少 `$` 定界符的 `\frac`、`\left`、`\lim` 等 LaTeX 源码，插件会在渲染前自动补齐定界符。单独成行的 `[` 与 `]` 包围明确 LaTeX 时，也会作为一个完整公式块处理，不会拆成多条消息。
 
 示例：
 
@@ -360,6 +362,7 @@ password = 空
 
 - 表格识别要求存在标准 Markdown 表头分隔行，例如 `| --- | --- |`。
 - 行内公式所在的整行会渲染为图片，而不是只渲染 `$...$` 中的局部内容。
+- 缺少 `$` / `$$` 的明确 LaTeX 命令会在渲染前自动补齐定界符。
 - 只有明确的 LaTeX 语法和 Markdown 表格会触发转图；普通 Unicode 数学符号和文本算式保持原样发送。
 - 本地文转图效果取决于 PillowMD、字体和运行环境。
 - 复杂 LaTeX 是否完整显示取决于 PillowMD 和 pillowlatex 的语法支持。

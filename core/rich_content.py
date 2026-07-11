@@ -19,9 +19,13 @@ _INLINE_MATH_RE = re.compile(
     r"(?<!\\)\$(?!\s|\$).+?(?<!\s|\\)\$|\\\(.+?\\\)", re.DOTALL
 )
 _LATEX_COMMAND_RE = re.compile(
-    r"\\(?:frac|sqrt|sum|prod|int|lim|log|sin|cos|tan|alpha|beta|gamma|"
-    r"theta|lambda|mu|pi|sigma|phi|omega|begin|left|right)\b"
+    r"\\(?:d?frac|tfrac|sqrt|sum|prod|int|lim|log|sin|cos|tan|alpha|beta|"
+    r"gamma|theta|lambda|mu|pi|sigma|phi|omega|begin|end|left|right|cdot|"
+    r"times|div|pm|leq?|geq?|neq?|to|infty|overline|underline|vec|hat|bar|"
+    r"text|mathrm)\b"
 )
+_CJK_OR_PUNCT_RE = re.compile(r"[\u3400-\u9fff，。；：！？、]")
+_NON_CJK_SEGMENT_RE = re.compile(r"[^\u3400-\u9fff，。；：！？、]+")
 
 
 def _is_table_start(lines: list[str], index: int) -> bool:
@@ -56,6 +60,45 @@ def contains_math(text: str) -> bool:
     if _INLINE_MATH_RE.search(text):
         return True
     return bool(_LATEX_COMMAND_RE.search(text))
+
+
+def normalize_math_markdown(text: str) -> str:
+    """Add delimiters to explicit but unwrapped LaTeX before PillowMD rendering."""
+    stripped = text.strip()
+    if not stripped:
+        return text
+    stripped = re.sub(
+        r"\\\[(.+?)\\\]",
+        lambda match: f"$$\n{match.group(1).strip()}\n$$",
+        stripped,
+        flags=re.DOTALL,
+    )
+    stripped = re.sub(
+        r"\\\((.+?)\\\)",
+        lambda match: f"${match.group(1).strip()}$",
+        stripped,
+        flags=re.DOTALL,
+    )
+    if _INLINE_MATH_RE.search(stripped) or stripped.startswith("$$"):
+        return stripped
+    if re.match(r"\\begin\{[^}]+\}", stripped):
+        return f"$$\n{stripped}\n$$"
+    if not _LATEX_COMMAND_RE.search(stripped):
+        return stripped
+
+    if not _CJK_OR_PUNCT_RE.search(stripped):
+        return f"$$\n{stripped}\n$$"
+
+    def wrap_latex_segment(match: re.Match[str]) -> str:
+        segment = match.group(0)
+        if not _LATEX_COMMAND_RE.search(segment):
+            return segment
+        leading = segment[: len(segment) - len(segment.lstrip())]
+        trailing = segment[len(segment.rstrip()) :]
+        content = segment.strip()
+        return f"{leading}${content}${trailing}"
+
+    return _NON_CJK_SEGMENT_RE.sub(wrap_latex_segment, stripped)
 
 
 def _append_block(blocks: list[ContentBlock], kind: str, content: str) -> None:
@@ -126,6 +169,18 @@ def extract_content_blocks(text: str) -> list[ContentBlock]:
                 index += 1
             _append_block(blocks, "table", "".join(table_lines))
             continue
+
+        if stripped == "[":
+            closing_index = index + 1
+            while closing_index < len(lines) and lines[closing_index].strip() != "]":
+                closing_index += 1
+            if closing_index < len(lines):
+                inner = "".join(lines[index + 1 : closing_index])
+                if contains_math(inner):
+                    flush_pending()
+                    _append_block(blocks, "math", inner)
+                    index = closing_index + 1
+                    continue
 
         math_end = _display_math_end(stripped)
         if math_end:
