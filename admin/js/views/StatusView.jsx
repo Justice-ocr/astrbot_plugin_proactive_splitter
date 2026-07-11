@@ -479,12 +479,14 @@ function StatusView({ onRefresh }) {
                                 <StatusMetricRow label="自动转图" value={richContent.rich_render_enabled ? '已启用' : '已关闭'} status={richContent.rich_render_enabled ? 'success' : 'error'} />
                             </div>
                             <div className="status-metric-list">
-                                <StatusMetricRow label="渲染策略" value={richContent.use_network ? '优先网络渲染' : '本地渲染'} />
-                                <StatusMetricRow label="渲染模板" value={richContent.template_name || 'base'} />
+                                <StatusMetricRow label="渲染引擎" value="PillowMD（本地无浏览器）" />
+                                <StatusMetricRow label="图片尺寸" value={`${Number(richContent.width || 1000)} px · 字号 ${Number(richContent.font_size || 25)}`} />
+                                <StatusMetricRow label="自定义样式" value={richContent.style_path || '默认样式'} />
                             </div>
                             <div className="status-metric-list">
                                 <StatusMetricRow label="累计结果" value={`成功 ${Number(richContent.render_successes || 0)} / 失败 ${Number(richContent.render_failures || 0)} / 跳过 ${Number(richContent.render_skipped || 0)}`} />
                                 <StatusMetricRow label="最近结果" value={`${richLastResult}${richContent.last_kind ? ` · ${richContent.last_kind}` : ''}`} status={richContent.last_result === 'failure' ? 'error' : richContent.last_result === 'success' ? 'success' : ''} />
+                                <StatusMetricRow label="渲染耗时" value={richContent.last_duration_ms == null ? '暂无记录' : `最近 ${Number(richContent.last_duration_ms).toFixed(1)} ms · 平均 ${Number(richContent.average_duration_ms || 0).toFixed(1)} ms · 最大 ${Number(richContent.max_duration_ms || 0).toFixed(1)} ms`} />
                                 {richContent.last_error ? <StatusMetricRow label="最近错误" value={richContent.last_error} status="error" /> : null}
                             </div>
                         </Box>

@@ -462,7 +462,9 @@
         var pendingJobsCount = Math.max(0, visibleJobsCount - realJobsCount);
         var rich = status.rich_content || {};
         var richLastResult = rich.last_result === "success" ? "最近成功" : rich.last_result === "failure" ? "最近失败" : rich.last_result === "disabled" ? "已跳过" : "暂无记录";
-        var richStrategy = rich.use_network ? "优先网络渲染" : "本地渲染";
+        var richDuration = rich.last_duration_ms == null
+            ? "暂无记录"
+            : "最近 " + Number(rich.last_duration_ms).toFixed(1) + " ms · 平均 " + Number(rich.average_duration_ms || 0).toFixed(1) + " ms · 最大 " + Number(rich.max_duration_ms || 0).toFixed(1) + " ms";
         $("view-status").innerHTML = [
             '<div class="pc-grid metrics">',
             metric("插件状态", status.running ? "运行中" : "已停止", "版本 " + text(status.version, "...")),
@@ -486,9 +488,12 @@
             '<div class="pc-card"><div class="pc-card-title">表格与公式转图</div><div class="pc-list" style="margin-top:14px">',
             infoRow("统一消息处理", rich.enabled ? "已启用" : "已关闭"),
             infoRow("自动转图", rich.rich_render_enabled ? "已启用" : "已关闭"),
-            infoRow("渲染策略", richStrategy + " · 模板 " + text(rich.template_name, "base")),
+            infoRow("渲染引擎", "PillowMD（本地无浏览器）"),
+            infoRow("图片尺寸", Number(rich.width || 1000) + " px · 字号 " + Number(rich.font_size || 25)),
+            infoRow("自定义样式", text(rich.style_path, "默认样式")),
             infoRow("累计结果", "成功 " + Number(rich.render_successes || 0) + " / 失败 " + Number(rich.render_failures || 0) + " / 跳过 " + Number(rich.render_skipped || 0)),
             infoRow("最近结果", richLastResult + (rich.last_kind ? " · " + rich.last_kind : "")),
+            infoRow("渲染耗时", richDuration),
             rich.last_error ? infoRow("最近错误", rich.last_error) : "",
             '</div></div></div>'
         ].join("");

@@ -9,13 +9,14 @@ import re
 import time
 from typing import Any
 
-from astrbot.api import html_renderer, logger
+from astrbot.api import logger
 from astrbot.api.message_components import Image, Plain, Record, Reply
 from astrbot.api.provider import ProviderRequest
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 
 from .rich_content import build_split_pattern, extract_content_blocks, smart_split_text
+from .pillowmd_renderer import PillowMarkdownRenderer
 
 
 class UnifiedSplitterMixin:
@@ -34,8 +35,10 @@ class UnifiedSplitterMixin:
             "enabled": bool(settings.get("enable", True)),
             "split_enabled": bool(settings.get("enable_split", True)),
             "rich_render_enabled": bool(settings.get("enable_rich_render", True)),
-            "use_network": bool(settings.get("rich_render_use_network", True)),
-            "template_name": settings.get("rich_render_template", "base") or "base",
+            "engine": "pillowmd",
+            "style_path": str(settings.get("rich_render_style_path", "") or ""),
+            "font_size": int(settings.get("rich_render_font_size", 25) or 25),
+            "width": int(settings.get("rich_render_width", 1000) or 1000),
             "render_attempts": int(stats.get("render_attempts", 0) or 0),
             "render_successes": int(stats.get("render_successes", 0) or 0),
             "render_failures": int(stats.get("render_failures", 0) or 0),
@@ -44,6 +47,9 @@ class UnifiedSplitterMixin:
             "last_kind": stats.get("last_kind"),
             "last_error": stats.get("last_error"),
             "last_render_at": stats.get("last_render_at"),
+            "last_duration_ms": stats.get("last_duration_ms"),
+            "average_duration_ms": stats.get("average_duration_ms"),
+            "max_duration_ms": stats.get("max_duration_ms"),
             "last_segments_count": int(stats.get("last_segments_count", 0) or 0),
             "last_processed_at": stats.get("last_processed_at"),
         }
@@ -375,19 +381,28 @@ class UnifiedSplitterMixin:
             last_kind=kind,
             last_render_at=time.time(),
         )
+        started_at = time.perf_counter()
         try:
-            path = await html_renderer.render_t2i(
-                text,
-                use_network=bool(settings.get("rich_render_use_network", True)),
-                return_url=False,
-                template_name=settings.get("rich_render_template", "base") or "base",
-            )
+            renderer = getattr(self, "_rich_renderer", None)
+            if renderer is None:
+                renderer = PillowMarkdownRenderer()
+                setattr(self, "_rich_renderer", renderer)
+            path = await renderer.render(text, settings)
+            duration_ms = (time.perf_counter() - started_at) * 1000
             diagnostics = self.get_unified_splitter_diagnostics()
+            successes = diagnostics["render_successes"] + 1
+            previous_average = float(diagnostics.get("average_duration_ms") or 0)
+            average_ms = previous_average + (duration_ms - previous_average) / successes
             self._record_unified_splitter_diagnostic(
-                render_successes=diagnostics["render_successes"] + 1,
+                render_successes=successes,
                 last_result="success",
                 last_error=None,
                 last_render_at=time.time(),
+                last_duration_ms=round(duration_ms, 1),
+                average_duration_ms=round(average_ms, 1),
+                max_duration_ms=round(
+                    max(float(diagnostics.get("max_duration_ms") or 0), duration_ms), 1
+                ),
             )
             logger.info(f"[Proactive Splitter] 已将 {kind} 内容渲染为图片。")
             if str(path).startswith(("http://", "https://", "file://", "base64://", "data:")):
@@ -403,6 +418,13 @@ class UnifiedSplitterMixin:
             )
             logger.warning(f"[Proactive Splitter] {kind} 渲染失败，保留完整文本: {exc}")
             return Plain(text=text)
+
+    async def cleanup_unified_splitter_resources(self) -> None:
+        renderer = getattr(self, "_rich_renderer", None)
+        if renderer is None:
+            return
+        setattr(self, "_rich_renderer", None)
+        await renderer.close()
 
     def _unified_delay(self, next_segment: list, settings: dict, event: Any) -> float:
         text = "".join(component.text for component in next_segment if isinstance(component, Plain))

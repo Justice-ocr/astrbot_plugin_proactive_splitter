@@ -4,4 +4,5 @@ apscheduler>=3.10,<4.0
 aiofiles>=23.2
 fastapi>=0.110
 uvicorn>=0.29
+pillowmd==0.7.3
 tomli>=2.0,<3.0 ; python_version < "3.11"

@@ -42,16 +42,18 @@ class FakeRenderer:
         self.calls = []
         self.fail = False
 
-    async def render_t2i(self, text, **kwargs):
+    async def render(self, text, settings):
         self.calls.append(text)
         if self.fail:
             raise RuntimeError("render failed")
-        return f"C:/tmp/render-{len(self.calls)}.jpg"
+        return f"C:/tmp/render-{len(self.calls)}.png"
+
+    async def close(self):
+        return None
 
 
 renderer = FakeRenderer()
 api = types.ModuleType("astrbot.api")
-api.html_renderer = renderer
 api.logger = FakeLogger()
 components = types.ModuleType("astrbot.api.message_components")
 components.Image = Image
@@ -115,6 +117,7 @@ class FakeContext:
 class Plugin(UnifiedSplitterMixin):
     def __init__(self):
         self.context = FakeContext()
+        self._rich_renderer = renderer
         self.config = {
             "unified_splitter_settings": {
                 "enable": True,

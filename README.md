@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.4.1-brightgreen" alt="v1.4.1">
+    <img src="https://img.shields.io/badge/Version-v1.5.0-brightgreen" alt="v1.5.0">
   </p>
 </div>
 
@@ -26,6 +26,7 @@
 - [Justice-ocr/astrbot_plugin_proactive_chat](https://github.com/Justice-ocr/astrbot_plugin_proactive_chat)
 - [DBJD-CR/astrbot_plugin_proactive_chat](https://github.com/DBJD-CR/astrbot_plugin_proactive_chat)
 - [nuomicici/astrbot_plugin_splitter](https://github.com/nuomicici/astrbot_plugin_splitter)
+- [luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic](https://github.com/luosheng520qaq/astrbot_plugin_nobrowser_markdown_to_pic)
 
 当前仓库：[Justice-ocr/astrbot_plugin_proactive_splitter](https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter)
 
@@ -112,8 +113,8 @@ $$
 
 处理结果：
 
-1. 整个表格或公式块交给 AstrBot 的 `html_renderer.render_t2i`。
-2. 渲染成功后生成独立图片消息。
+1. 整个表格或公式块交给 PillowMD 在本地无浏览器渲染。
+2. 渲染成功后生成临时 PNG，并作为独立图片消息发送。
 3. 渲染失败时保留为一个完整文本块，不再对其分段。
 
 代码围栏中的 `$`、数学符号和竖线不会触发表格或公式识别。
@@ -275,10 +276,14 @@ default:GroupMessage:123456789
 | --- | ---: | --- |
 | `enable_rich_render` | `true` | 启用表格和公式转图 |
 | `inject_rich_prompt` | `true` | 提示模型使用标准 Markdown/LaTeX |
-| `rich_render_use_network` | `true` | 优先使用 AstrBot 网络文转图服务 |
-| `rich_render_template` | `base` | AstrBot 文转图模板名 |
+| `rich_render_style_path` | 空 | PillowMD 自定义样式目录，留空使用默认样式 |
+| `rich_render_font_size` | `25` | 图片正文字号 |
+| `rich_render_width` | `1000` | 图片最大内容宽度（像素） |
+| `rich_render_auto_page` | `false` | 长内容自动分页排版 |
+| `rich_render_transparent_background` | `false` | 使用透明背景并移除装饰 |
+| `rich_render_cache_ttl` | `180` | 临时 PNG 保留时间（秒） |
 
-如果不希望公式或表格内容发送到远程文转图端点，请将 `rich_render_use_network` 设为 `false`。
+PillowMD 渲染在插件进程内完成，不会把表格或公式文本发送到远程文转图端点，也不需要 Chromium。首次渲染需要加载字体和公式组件，之后通常会更快。
 
 ## 主动消息分段与普通回复分段的区别
 
@@ -314,9 +319,9 @@ data/plugin_data/astrbot_plugin_proactive_chat/
 
 最近消息和提示词会发送给当前会话配置的 LLM 提供商，这是生成主动消息和预测下次触发时间所必需的。
 
-### 网络文转图
+### 本地富内容转图
 
-当 `rich_render_use_network=true` 时，被识别出的表格或公式文本会交给 AstrBot 配置的文转图端点。关闭该选项后使用本地渲染策略。
+表格和公式由 PillowMD 在本地渲染为临时 PNG，不会发送到外部文转图服务。图片会在 `rich_render_cache_ttl` 到期或插件停止时删除。
 
 ### 通知中心
 

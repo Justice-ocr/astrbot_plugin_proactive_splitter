@@ -5,6 +5,14 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+## v1.5.0 - PillowMD 本地无浏览器转图
+
+- 合入 `astrbot_plugin_nobrowser_markdown_to_pic` 的 PillowMD 渲染能力，替代 AstrBot `html_renderer`。
+- 表格与公式全部在本地转为 PNG，不再依赖 Chromium 或网络文转图端点。
+- 新增自定义样式、字号、宽度、自动分页、透明背景和临时图片保留时间配置。
+- 管理端新增渲染引擎、样式、图片尺寸及最近/平均/最大耗时诊断。
+- 保留现有富内容识别和统一分段管线；渲染失败时仍以完整文本块回退。
+
 ## v1.4.1 - Web 管理端完整配置与运行诊断
 
 - 修复独立 WebUI 和 AstrBot Pages 无法保存统一分段、表格/公式转图及遥测配置的问题。

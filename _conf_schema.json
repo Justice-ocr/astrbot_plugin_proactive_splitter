@@ -705,16 +705,39 @@
                 "type": "bool",
                 "default": true
             },
-            "rich_render_use_network": {
-                "description": "优先使用 AstrBot 网络渲染器",
-                "type": "bool",
-                "default": true,
-                "hint": "网络失败会自动回退到 AstrBot 本地渲染器"
-            },
-            "rich_render_template": {
-                "description": "AstrBot 文转图模板名",
+            "rich_render_style_path": {
+                "description": "PillowMD 自定义样式目录",
                 "type": "string",
-                "default": "base"
+                "default": "",
+                "hint": "留空使用 PillowMD 默认样式；路径不存在时保留原始文本"
+            },
+            "rich_render_font_size": {
+                "description": "富内容图片正文字号",
+                "type": "int",
+                "default": 25,
+                "slider": {"min": 8, "max": 80, "step": 1}
+            },
+            "rich_render_width": {
+                "description": "富内容图片最大内容宽度",
+                "type": "int",
+                "default": 1000,
+                "slider": {"min": 200, "max": 2400, "step": 50}
+            },
+            "rich_render_auto_page": {
+                "description": "长内容自动分页排版",
+                "type": "bool",
+                "default": false
+            },
+            "rich_render_transparent_background": {
+                "description": "使用透明背景并移除装饰",
+                "type": "bool",
+                "default": false
+            },
+            "rich_render_cache_ttl": {
+                "description": "临时图片保留时间（秒）",
+                "type": "int",
+                "default": 180,
+                "slider": {"min": 30, "max": 600, "step": 10}
             },
             "split_mode": {
                 "description": "普通回复分段模式",

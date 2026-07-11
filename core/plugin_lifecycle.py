@@ -154,6 +154,12 @@ class LifecycleMixin:
         """插件被卸载或停用时调用的清理函数。"""
         logger.info("[主动消息] 收到插件终止指令，开始清理资源喵。")
         try:
+            cleanup_rich_renderer = getattr(
+                self, "cleanup_unified_splitter_resources", None
+            )
+            if callable(cleanup_rich_renderer):
+                await cleanup_rich_renderer()
+
             if self._heartbeat_task:
                 self._heartbeat_task.cancel()
                 try:
