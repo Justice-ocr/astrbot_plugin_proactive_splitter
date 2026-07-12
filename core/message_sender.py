@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import math
-import random
-import re
 import traceback
 from pathlib import Path
 from typing import Any
@@ -44,126 +41,10 @@ class SenderMixin:
     telemetry: Any
     data_dir: Any
 
-    def _split_text(self, text: str, settings: dict) -> list[str]:
-        """根据配置对文本进行分段。"""
-        split_mode = settings.get("split_mode", "regex")
-
-        # 新版 AstrBot（如 v4.20.1+）中，分段正则本身不再承担“匹配后自动移除命中字符”的旧行为。
-        # 因此这里显式增加一个独立的内容清理阶段：
-        # 1. 先按 split_mode 执行“切段”；
-        # 2. 再在每个切好的分段上按 content_cleanup_rule 做二次清理。
-        # 这样可以与官方的 segmented_reply.content_cleanup_rule 机制保持一致。
-        enable_content_cleanup = settings.get("enable_content_cleanup", False)
-        # 只有开关开启时才启用内容过滤规则；关闭时直接置空，确保完全保持旧版插件行为。
-        content_cleanup_rule = (
-            settings.get("content_cleanup_rule", "") if enable_content_cleanup else ""
-        )
-        content_cleanup_pattern: re.Pattern[str] | None = None
-        if content_cleanup_rule:
-            try:
-                content_cleanup_pattern = re.compile(content_cleanup_rule)
-            except re.error:
-                logger.error(
-                    "[主动消息] 内容清理正则表达式错误，将跳过内容清理并保留原始分段: "
-                    f"{traceback.format_exc()}"
-                )
-
-        if split_mode == "words":
-            # words 模式下，先用分段词列表识别切分点。
-            # 注意：这里的“切分”与“内容清理”是两件不同的事：
-            # - split_words 负责决定在哪里断句；
-            # - content_cleanup_rule 负责决定是否移除分段后的特定字符（如换行）。
-            split_words = settings.get("split_words", ["。", "？", "！", "~", "…"])
-            if not split_words:
-                # 用户未提供分段词时退化为不分段，避免构造空正则导致行为不可预期。
-                return [text]
-
-            escaped_words = sorted(
-                [re.escape(word) for word in split_words], key=len, reverse=True
-            )
-            # 保留分隔符，避免语气符号在切分时丢失
-            pattern = re.compile(f"(.*?({'|'.join(escaped_words)})|.+$)", re.DOTALL)
-
-            segments = pattern.findall(text)
-            result: list[str] = []
-            for seg in segments:
-                if isinstance(seg, tuple):
-                    content = seg[0]
-                    if not isinstance(content, str):
-                        continue
-                    if content_cleanup_pattern:
-                        # 这里的 sub 属于“分段后清理”：
-                        # content 已经是单个分段，不会再影响其他分段边界。
-                        # 这样可避免把正则切分职责与内容删除职责耦合在一起。
-                        content = content_cleanup_pattern.sub("", content)
-                    if content.strip():
-                        # 清理后若只剩空白，则直接丢弃，避免发送空消息段。
-                        result.append(content)
-                elif seg:
-                    cleaned_seg = seg
-                    if content_cleanup_pattern:
-                        # 极少数情况下 findall 可能返回非 tuple 的字符串分段；
-                        # 这里保持同样的清理策略，确保两类返回值行为一致。
-                        cleaned_seg = content_cleanup_pattern.sub("", cleaned_seg)
-                    if cleaned_seg.strip():
-                        result.append(cleaned_seg)
-            return result if result else [text]
-
-        # 正则分段模式
-        # regex 仅用于“如何找出每一个分段”，不再假设其天然具备“删除命中字符”的副作用。
-        # 若需要删除换行、句号等字符，应通过 content_cleanup_rule 明确声明。
-        regex_pattern = settings.get("regex", r".*?[。？！~…\n]+|.+$")
-        try:
-            split_response = re.findall(regex_pattern, text, re.DOTALL | re.MULTILINE)
-        except re.error:
-            logger.error(
-                f"[主动消息] 分段回复正则表达式错误，使用默认分段方式: {traceback.format_exc()}"
-            )
-            split_response = re.findall(
-                r".*?[。？！~…\n]+|.+$", text, re.DOTALL | re.MULTILINE
-            )
-
-        result: list[str] = []
-        for seg in split_response:
-            cleaned_seg = seg
-            if content_cleanup_pattern:
-                # 与 words 模式保持一致：先完成切分，再对每段内容做独立清理。
-                # 这样当默认规则为 [\n] 时，可稳定去除分段回复中残留的空行字符。
-                cleaned_seg = content_cleanup_pattern.sub("", cleaned_seg)
-            if cleaned_seg.strip():
-                # 过滤掉清理后为空的分段，避免平台收到空 Plain 消息。
-                result.append(cleaned_seg)
-        return result if result else [text]
-
-    async def _calc_interval(self, text: str, settings: dict) -> float:
-        """计算分段回复的间隔时间。"""
-        interval_method = settings.get("interval_method", "random")
-
-        # 对数间隔模式（模拟打字速度）
-        if interval_method == "log":
-            log_base = float(settings.get("log_base", 1.8))
-            if all(ord(c) < 128 for c in text):
-                word_count = len(text.split())
-            else:
-                word_count = len([c for c in text if c.isalnum()])
-            i = math.log(word_count + 1, log_base)
-            return random.uniform(i, i + 0.5)
-
-        # 随机区间模式
-        interval_str = settings.get("interval", "1.5, 3.5")
-        try:
-            interval_ls = [float(t) for t in interval_str.replace(" ", "").split(",")]
-            interval = interval_ls if len(interval_ls) == 2 else [1.5, 3.5]
-        except Exception:
-            interval = [1.5, 3.5]
-
-        return random.uniform(interval[0], interval[1])
-
     async def _trigger_decorating_hooks(
         self,
         session_id: str,
         chain: list,
-        splitter_settings: dict | None = None,
     ) -> list:
         """触发 OnDecoratingResultEvent 钩子。"""
         parsed = self._parse_session_id(session_id)
@@ -219,10 +100,8 @@ class SenderMixin:
             platform_meta=platform_inst.meta(),
             session_id=target_id,
         )
-        # 让统一分段器识别这是主动消息，并继承原有的会话级分段配置。
+        # 让统一分段器识别这是主动消息；分段规则统一读取全局 Pro 配置。
         setattr(event, "__proactive_chat_event", True)
-        if splitter_settings is not None:
-            setattr(event, "__proactive_segmented_settings", splitter_settings)
 
         # 注入结果链以便装饰器修改
         res = MessageEventResult()
@@ -321,13 +200,11 @@ class SenderMixin:
         self,
         session_id: str,
         components: list,
-        splitter_settings: dict | None = None,
     ) -> None:
         """发送消息链（含装饰钩子）。"""
         processed_chain_list = await self._trigger_decorating_hooks(
             session_id,
             components,
-            splitter_settings=splitter_settings,
         )
         if not processed_chain_list:
             return
@@ -405,8 +282,6 @@ class SenderMixin:
         )
 
         tts_conf = session_config.get("tts_settings", {})
-        seg_conf = session_config.get("segmented_reply_settings", {})
-
         # 先尝试 TTS：成功后是否继续发文本由 always_send_text 控制
         is_tts_sent = False
         if tts_conf.get("enable_tts", True):
@@ -438,12 +313,10 @@ class SenderMixin:
         should_send_text = not is_tts_sent or tts_conf.get("always_send_text", True)
 
         if should_send_text:
-            # 必须把完整文本交给统一装饰链。表格和公式会先被抽取并渲染，
-            # 之后普通文本才按当前会话原有的 segmented_reply_settings 分段。
+            # 必须把完整文本交给统一装饰链。表格、公式和普通文本均按全局 Pro 规则处理。
             await self._send_chain_with_hooks(
                 session_id,
                 [Plain(text=text)],
-                splitter_settings=seg_conf,
             )
             if self.telemetry and self.telemetry.enabled:
                 self._track_task(
@@ -456,7 +329,11 @@ class SenderMixin:
                                 ),
                                 "tts_enabled": bool(tts_conf.get("enable_tts", True)),
                                 "tts_sent": is_tts_sent,
-                                "segmented_enabled": bool(seg_conf.get("enable", False)),
+                                "segmented_enabled": bool(
+                                    self._get_unified_splitter_config().get(
+                                        "enable_split", True
+                                    )
+                                ),
                                 "text_length": len(text),
                                 "success": True,
                             },

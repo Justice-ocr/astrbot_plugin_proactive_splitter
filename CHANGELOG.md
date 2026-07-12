@@ -5,6 +5,12 @@
 <!-- markdownlint-disable MD041 -->
 # ChangeLog
 
+## v1.7.0 - 统一为分段回复 Pro 规则
+
+- 移除主动消息会话级旧 `segmented_reply_settings` 分段、长度阈值和间隔算法。
+- 普通 AI 回复与主动消息统一使用 `unified_splitter_settings` 中的分段回复 Pro 规则。
+- 会话配置页不再展示旧分段设置；已有历史数据保留但不再参与运行。
+
 ## v1.6.1 - 修复 Linux Chromium 系统依赖安装
 
 - 修复只下载 Playwright Chromium、但未安装 `libnspr4` 等 Linux 动态库导致浏览器启动失败的问题。

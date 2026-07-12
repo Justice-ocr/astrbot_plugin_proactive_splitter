@@ -195,6 +195,30 @@ def test_disabled_rich_render_is_counted_as_skipped():
     assert diagnostics["last_result"] == "disabled"
 
 
+def test_proactive_legacy_split_settings_cannot_override_global_rules():
+    renderer.calls.clear()
+    plugin = Plugin()
+    event = FakeEvent("第一句。第二句。")
+    event.__proactive_chat_event = True
+    event.__proactive_segmented_settings = {
+        "enable": False,
+        "split_mode": "regex",
+        "regex": r".+$",
+    }
+
+    settings = plugin._get_unified_splitter_config(event)
+    assert settings["enable_split"] is True
+    assert "proactive_legacy_settings" not in settings
+
+    asyncio.run(plugin.unified_on_decorating_result(event))
+    all_units = [components for _, components in plugin.context.sent]
+    all_units.append(event.result.chain)
+    assert [component.text for unit in all_units for component in unit if isinstance(component, Plain)] == [
+        "第一句。",
+        "第二句。",
+    ]
+
+
 def test_formula_heavy_reply_is_rendered_as_one_complete_image():
     renderer.calls.clear()
     plugin = Plugin()

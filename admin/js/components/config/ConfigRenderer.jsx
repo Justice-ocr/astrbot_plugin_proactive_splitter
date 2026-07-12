@@ -42,7 +42,6 @@ const CONFIG_ICONS = {
     auto_trigger_settings: '🤖',
     schedule_settings: '🕒',
     tts_settings: '🔊',
-    segmented_reply_settings: '🔪',
     enable: '✅',
     session_list: '📋',
     proactive_prompt: '🧠',
@@ -55,11 +54,8 @@ const CONFIG_ICONS = {
     max_unanswered_times: '🛑',
     enable_tts: '💬',
     always_send_text: '🔤',
-    words_count_threshold: '📏',
     split_mode: 'Ⓜ️',
     regex: '🧩',
-    split_words: '📝',
-    interval_method: '⏱️',
     interval: '🎲',
     log_base: '📈',
     enabled: '✅',
@@ -430,7 +426,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
         );
     }
 
-    // 列表字段使用“每行一项”的多行文本输入，适合编辑 session_list / split_words 等数组数据。
+    // 列表字段使用“每行一项”的多行文本输入，适合编辑 session_list 等数组数据。
     if (schema.type === 'list' || schema.type === 'array') {
         return (
             <Box sx={{
@@ -647,7 +643,6 @@ function getSessionSchemaEntries(schema, sessionType) {
         'context_settings',
         'schedule_settings',
         'tts_settings',
-        'segmented_reply_settings',
     ];
     const hiddenKeys = new Set(['enable', 'session_list']);
 

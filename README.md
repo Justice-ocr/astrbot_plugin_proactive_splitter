@@ -9,7 +9,7 @@
     <a href="https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"><img src="https://img.shields.io/badge/GitHub-Repository-181717" alt="GitHub repository"></a>
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D%204.10.2-orange" alt="AstrBot >= 4.10.2">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0">
-    <img src="https://img.shields.io/badge/Version-v1.6.1-brightgreen" alt="v1.6.1">
+    <img src="https://img.shields.io/badge/Version-v1.7.0-brightgreen" alt="v1.7.0">
   </p>
 </div>
 
@@ -69,7 +69,7 @@
 - AstrBot 的普通 AI 回复。
 - 本插件生成的主动消息。
 
-普通回复使用 `unified_splitter_settings`；主动消息优先沿用对应会话的 `segmented_reply_settings`。
+普通 AI 回复和主动消息都使用 `unified_splitter_settings` 中的同一套分段回复 Pro 规则。
 
 主要行为：
 
@@ -305,16 +305,11 @@ sudo python -m playwright install-deps chromium
 python -m playwright install chromium-headless-shell
 ```
 
-## 主动消息分段与普通回复分段的区别
+## 统一分段规则
 
-| 消息来源 | 使用的配置 |
-| --- | --- |
-| 普通 AI 回复 | `unified_splitter_settings` |
-| 主动消息 | 会话内的 `segmented_reply_settings` |
+普通 AI 回复与主动消息共用 `unified_splitter_settings` 中的分段回复 Pro 规则，包括分段符号/正则、均分、长度限制、媒体策略和发送间隔。会话级旧 `segmented_reply_settings` 已不再生效；已有历史配置会保留在数据文件中，但会被忽略。
 
-无论主动消息是否启用文本分段，表格和公式识别仍会先执行，以保证富内容不会被拆散。
-
-主动消息中的 `words_count_threshold` 保留原插件语义：文本长度不超过阈值时允许分段，超过阈值时整段发送。
+表格和公式识别始终发生在文本分段之前，以保证富内容不会被拆散。
 
 ## 数据目录
 

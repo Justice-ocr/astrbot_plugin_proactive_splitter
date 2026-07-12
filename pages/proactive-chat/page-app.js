@@ -710,8 +710,7 @@
             "proactive_prompt",
             "context_settings",
             "schedule_settings",
-            "tts_settings",
-            "segmented_reply_settings"
+            "tts_settings"
         ];
         var entries = [];
         entries.push(["session_name", rootItems.session_name || {

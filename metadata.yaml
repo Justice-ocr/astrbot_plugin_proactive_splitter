@@ -1,8 +1,8 @@
 name: "astrbot_plugin_proactive_splitter"
 display_name: "语境主动消息 + 智能分段与公式图片"
 author: "DBJD-CR & Justice-ocr & nuomicici & contributors"
-version: "v1.6.1"
-desc: "合并语境感知主动调度与智能分段；使用 MathJax 渲染复杂公式，并支持按公式占比将整份回复分图发送。"
+version: "v1.7.0"
+desc: "合并语境感知主动调度与分段回复 Pro；普通回复与主动消息统一使用同一套分段规则。"
 repo: "https://github.com/Justice-ocr/astrbot_plugin_proactive_splitter"
 astrbot_version: ">=4.10.2"
 support_platforms:

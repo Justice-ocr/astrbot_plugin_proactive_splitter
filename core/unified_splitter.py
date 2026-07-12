@@ -87,12 +87,7 @@ class UnifiedSplitterMixin:
 
     def _get_unified_splitter_config(self, event: Any | None = None) -> dict:
         configured = self.config.get("unified_splitter_settings", {})
-        settings = dict(configured) if isinstance(configured, dict) else {}
-        proactive = getattr(event, "__proactive_segmented_settings", None)
-        if isinstance(proactive, dict):
-            settings["enable_split"] = bool(proactive.get("enable", False))
-            settings["proactive_legacy_settings"] = proactive
-        return settings
+        return dict(configured) if isinstance(configured, dict) else {}
 
     @staticmethod
     def _is_model_result(event: Any, result: Any) -> bool:
@@ -393,13 +388,6 @@ class UnifiedSplitterMixin:
         if not settings.get("enable_split", True):
             return [text]
 
-        proactive = settings.get("proactive_legacy_settings")
-        if isinstance(proactive, dict):
-            threshold = int(proactive.get("words_count_threshold", 150) or 0)
-            if threshold > 0 and len(text) > threshold:
-                return [text]
-            return self._legacy_proactive_split(text, proactive)
-
         min_length = int(settings.get("min_length_to_split", 0) or 0)
         if min_length > 0 and len(text) < min_length:
             return [text]
@@ -422,33 +410,6 @@ class UnifiedSplitterMixin:
                 str(item) for item in settings.get("no_split_around", []) or [] if item
             ],
         )
-
-    @staticmethod
-    def _legacy_proactive_split(text: str, settings: dict) -> list[str]:
-        if settings.get("split_mode", "regex") == "words":
-            words = [str(word) for word in settings.get("split_words", []) if word]
-            if not words:
-                return [text]
-            pattern = re.compile(rf"(.*?(?:{'|'.join(re.escape(word) for word in sorted(words, key=len, reverse=True))})|.+$)", re.DOTALL)
-            segments = [match.group(0) for match in pattern.finditer(text)]
-        else:
-            try:
-                raw_segments = re.findall(settings.get("regex", r".*?[。？！~…\n]+|.+$"), text, re.DOTALL | re.MULTILINE)
-            except re.error:
-                raw_segments = re.findall(r".*?[。？！~…\n]+|.+$", text, re.DOTALL | re.MULTILINE)
-            segments = [
-                next((part for part in segment if part), "")
-                if isinstance(segment, tuple)
-                else segment
-                for segment in raw_segments
-            ]
-        if settings.get("enable_content_cleanup", False):
-            try:
-                cleanup = re.compile(settings.get("content_cleanup_rule", ""))
-                segments = [cleanup.sub("", segment) for segment in segments]
-            except re.error:
-                pass
-        return [segment for segment in segments if segment.strip()] or [text]
 
     async def _render_rich_block(self, text: str, kind: str, settings: dict):
         if not settings.get("enable_rich_render", True):
@@ -521,20 +482,6 @@ class UnifiedSplitterMixin:
 
     def _unified_delay(self, next_segment: list, settings: dict, event: Any) -> float:
         text = "".join(component.text for component in next_segment if isinstance(component, Plain))
-        proactive = settings.get("proactive_legacy_settings")
-        if isinstance(proactive, dict):
-            if proactive.get("interval_method", "random") == "log":
-                base = max(float(proactive.get("log_base", 1.8)), 1.01)
-                count = len(text.split()) if text.isascii() else sum(char.isalnum() for char in text)
-                value = math.log(count + 1, base)
-                return random.uniform(value, value + 0.5)
-            try:
-                values = [float(item) for item in str(proactive.get("interval", "1.5, 3.5")).replace(" ", "").split(",")]
-                if len(values) == 2:
-                    return random.uniform(values[0], values[1])
-            except (TypeError, ValueError):
-                return 1.5
-
         strategy = settings.get("delay_strategy", "linear")
         if strategy == "random":
             return random.uniform(float(settings.get("random_min", 1.0)), float(settings.get("random_max", 3.0)))
