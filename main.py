@@ -257,6 +257,13 @@ class ProactiveChatPlugin(
         # 主类仅做入口转发，具体逻辑由 EventsMixin 实现
         await EventsMixin.on_after_message_sent(self, event)
 
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)
+    async def prepare_output_filter(self, event: AstrMessageEvent) -> None:
+        """Wait for complete model text before filtering; streamed chunks cannot be recalled."""
+        settings = self._get_unified_splitter_config(event)
+        if settings.get("output_filter_enabled", False) and settings.get("output_filter_rules"):
+            event.set_extra("enable_streaming", False)
+
     @filter.on_llm_request()
     async def on_llm_request(self, event: AstrMessageEvent, req) -> None:
         """提示模型使用可稳定识别的 Markdown/LaTeX 格式。"""

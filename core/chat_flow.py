@@ -14,6 +14,7 @@ from astrbot.core.agent.message import (
 )
 
 from ..utils.time_utils import is_quiet_time
+from .output_filter import filter_output
 
 
 class ProactiveCoreMixin:
@@ -240,6 +241,14 @@ class ProactiveCoreMixin:
                 unanswered_count,
             )
             if not response_text:
+                await self._schedule_next_chat_and_save(session_id)
+                return
+
+            response_text = filter_output(
+                response_text, self._get_unified_splitter_config()
+            )
+            if not response_text.strip():
+                logger.info("[主动消息] 前后缀过滤后没有可发送内容，跳过本次主动消息喵。")
                 await self._schedule_next_chat_and_save(session_id)
                 return
 

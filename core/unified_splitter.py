@@ -17,6 +17,7 @@ from astrbot.core.star.session_llm_manager import SessionServiceManager
 
 from .mathjax_renderer import MathJaxRenderer
 from .pillowmd_renderer import PillowMarkdownRenderer
+from .output_filter import filter_output
 from .rich_content import (
     build_split_pattern,
     calculate_math_ratio,
@@ -141,6 +142,16 @@ class UnifiedSplitterMixin:
             return
 
         settings = self._get_unified_splitter_config(event)
+        if settings.get("output_filter_enabled", False) and self._is_model_result(event, result):
+            filtered_chain = []
+            for component in self._merge_adjacent_plain(list(result.chain)):
+                if isinstance(component, Plain):
+                    component.text = filter_output(component.text, settings)
+                if not isinstance(component, Plain) or component.text.strip():
+                    filtered_chain.append(component)
+            result.chain[:] = filtered_chain
+        if not result.chain:
+            return
         if not settings.get("enable", True):
             return
 

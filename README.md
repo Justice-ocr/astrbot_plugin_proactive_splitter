@@ -257,7 +257,30 @@ default:GroupMessage:123456789
 
 还可以配置平台历史条数、是否包含 Bot 消息以及 Bot 标识符。
 
-### 5. 配置普通回复分段
+### 5. 配置自定义输出拦截
+
+`output_filter_enabled` 默认关闭。开启后，统一分段器会在富内容识别、TTS 和文本分段之前，按字面量前缀/后缀删除错误输出区块；主动消息也会在生成后、TTS 和调度收尾之前先执行一次过滤。
+
+例如处理模型输出的畸形思考前缀：
+
+```json
+{
+  "output_filter_enabled": true,
+  "output_filter_rules": [
+    {
+      "prefix": "<thinking",
+      "suffix": "</parameter>",
+      "match_scope": "start",
+      "unclosed_action": "remove_suffix"
+    }
+  ]
+}
+```
+
+匹配范围可以是 `start`（仅消息开头，默认，减少误删代码示例）或 `anywhere`（全文）。找不到结束后缀时，`remove_suffix` 会删除从前缀到消息结尾的内容，`ignore` 保留原文。过滤规则是字面量匹配，不是正则表达式；开启后会关闭普通响应流式输出，保证错误内容不会先被发送。过滤后为空的主动消息会跳过发送，不计为已发送的主动消息。
+
+
+### 6. 配置普通回复分段
 
 `unified_splitter_settings` 默认开启，且 `split_scope` 默认为 `llm_only`。
 
@@ -273,7 +296,7 @@ default:GroupMessage:123456789
 | `enable_reply` | `true` | 第一段引用原消息 |
 | `delay_strategy` | `linear` | 段间延迟算法 |
 
-### 6. 配置表格和公式转图
+### 7. 配置表格和公式转图
 
 相关配置位于 `unified_splitter_settings`：
 

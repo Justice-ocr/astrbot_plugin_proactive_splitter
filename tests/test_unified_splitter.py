@@ -81,7 +81,46 @@ sys.modules["astrbot.core.message.message_event_result"] = event_result
 sys.modules.setdefault("astrbot.core.star", types.ModuleType("astrbot.core.star"))
 sys.modules["astrbot.core.star.session_llm_manager"] = session_manager
 
+from core.output_filter import filter_output  # noqa: E402
 from core.unified_splitter import UnifiedSplitterMixin  # noqa: E402
+
+
+def test_output_filter_removes_malformed_thinking_block_before_split():
+    settings = {
+        "output_filter_enabled": True,
+        "output_filter_rules": [
+            {
+                "prefix": "<thinking",
+                "suffix": "</parameter>",
+                "match_scope": "start",
+                "unclosed_action": "remove_suffix",
+            }
+        ],
+    }
+    assert filter_output(
+        "<thinking页面有 FAQ</parameter>最终回答。", settings
+    ) == "最终回答。"
+
+
+def test_output_filter_removes_unclosed_prefix_to_end():
+    settings = {
+        "output_filter_enabled": True,
+        "output_filter_rules": [
+            {"prefix": "<thinking", "suffix": "</parameter>"}
+        ],
+    }
+    assert filter_output("<thinking页面有 FAQ", settings) == ""
+
+
+def test_output_filter_start_scope_preserves_later_examples():
+    settings = {
+        "output_filter_enabled": True,
+        "output_filter_rules": [
+            {"prefix": "<thinking", "suffix": "</parameter>"}
+        ],
+    }
+    assert filter_output("正常说明 <thinking示例</parameter>", settings) == "正常说明 <thinking示例</parameter>"
+
 
 
 class FakeResult:
@@ -136,6 +175,46 @@ class Plugin(UnifiedSplitterMixin):
                 "enable_tts_for_segments": False,
             }
         }
+
+
+def test_output_filter_runs_before_render_and_handles_adjacent_components():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"].update({
+        "output_filter_enabled": True,
+        "output_filter_rules": [{"prefix": "<thinking", "suffix": "</parameter>"}],
+    })
+    event = FakeEvent("")
+    event.result.chain = [Plain("<thin"), Plain("king$x+y$。隐藏</parameter>正常回答。")]
+    asyncio.run(plugin.unified_on_decorating_result(event))
+    assert renderer.calls == []
+    assert plugin.context.sent == []
+    assert [c.text for c in event.result.chain] == ["正常回答。"]
+
+
+def test_output_filter_empty_result_never_sends_or_renders():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"].update({
+        "output_filter_enabled": True,
+        "output_filter_rules": [{"prefix": "<thinking", "suffix": "</parameter>"}],
+    })
+    event = FakeEvent("<thinking隐藏$x$。")
+    asyncio.run(plugin.unified_on_decorating_result(event))
+    assert event.result.chain == []
+    assert plugin.context.sent == []
+    assert renderer.calls == []
+
+
+def test_output_filter_options_and_multiple_blocks():
+    rule = {"prefix": "[bad]", "suffix": "[/bad]", "match_scope": "anywhere"}
+    settings = {"output_filter_enabled": True, "output_filter_rules": [rule]}
+    assert filter_output("A[bad]x[/bad]B[bad]y[/bad]C", settings) == "ABC"
+    assert filter_output("only [/bad]", settings) == "only [/bad]"
+    rule["unclosed_action"] = "ignore"
+    assert filter_output("A[bad]x", settings) == "A[bad]x"
+    settings["output_filter_enabled"] = False
+    assert filter_output("[bad]x[/bad]", settings) == "[bad]x[/bad]"
 
 
 def test_rich_blocks_are_images_before_text_splitting():

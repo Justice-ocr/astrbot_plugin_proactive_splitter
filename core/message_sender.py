@@ -15,6 +15,8 @@ from astrbot.core.platform.message_type import MessageType
 from astrbot.core.platform.platform import PlatformStatus
 from astrbot.core.star.star_handler import EventType, star_handlers_registry
 
+from .output_filter import filter_output
+
 try:
     from astrbot.api.event import AstrMessageEvent as AstrBotMessageEvent
 except ImportError:
@@ -280,6 +282,11 @@ class SenderMixin:
         logger.info(
             f"[主动消息] 开始发送 {self._get_session_log_str(session_id, session_config)} 的主动消息喵。"
         )
+
+        text = filter_output(text, self._get_unified_splitter_config())
+        if not text.strip():
+            logger.info("[Proactive Splitter] 前后缀过滤后没有可发送内容，跳过本次主动消息。")
+            return
 
         tts_conf = session_config.get("tts_settings", {})
         # 先尝试 TTS：成功后是否继续发文本由 always_send_text 控制

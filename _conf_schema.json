@@ -455,6 +455,49 @@
                 "default": true,
                 "hint": "同时处理普通 AI 回复和本插件产生的主动消息"
             },
+            "output_filter_enabled": {
+                "description": "启用自定义前后缀过滤",
+                "type": "bool",
+                "default": false,
+                "hint": "在富内容处理、TTS 与分段之前删除配置的错误输出区块"
+            },
+            "output_filter_rules": {
+                "description": "自定义前后缀过滤规则",
+                "type": "template_list",
+                "default": [],
+                "templates": {
+                    "output_filter_rule": {
+                        "name": "前后缀规则",
+                        "items": {
+                            "prefix": {
+                                "description": "开始前缀",
+                                "type": "string",
+                                "default": "<thinking"
+                            },
+                            "suffix": {
+                                "description": "结束后缀",
+                                "type": "string",
+                                "default": "</parameter>"
+                            },
+                            "match_scope": {
+                                "description": "匹配范围",
+                                "type": "string",
+                                "options": ["start", "anywhere"],
+                                "labels": ["仅消息开头", "全文"],
+                                "default": "start"
+                            },
+                            "unclosed_action": {
+                                "description": "缺少结束后缀时",
+                                "type": "string",
+                                "options": ["remove_suffix", "ignore"],
+                                "labels": ["删除到结尾", "保留原文"],
+                                "default": "remove_suffix"
+                            }
+                        }
+                    }
+                },
+                "hint": "字面量匹配，不使用正则；默认仅从消息开头匹配，适合清理畸形思考输出"
+            },
             "enable_split": {
                 "description": "启用普通回复分段",
                 "type": "bool",
