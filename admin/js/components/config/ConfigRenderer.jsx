@@ -246,7 +246,7 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
                     </Button>
                 </Box>
                 {rows.length === 0 ? (
-                    <Typography variant="caption" color="text.secondary">暂无规则。添加后可分别填写查找文本和替换文本。</Typography>
+                    <Typography variant="caption" color="text.secondary">暂无规则。添加后可配置各项规则。</Typography>
                 ) : (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         {rows.map((row, index) => (
@@ -272,9 +272,16 @@ function ConfigField({ fieldKey, schema, value, onChange, depth = 0, path = '', 
                                         key={key}
                                         size="small"
                                         label={itemSchema.description || key}
+                                        select={Array.isArray(itemSchema.options)}
                                         value={row?.[key] ?? itemSchema.default ?? ''}
                                         onChange={(event) => updateRow(index, key, event.target.value)}
-                                    />
+                                    >
+                                        {Array.isArray(itemSchema.options) && itemSchema.options.map((option, optionIndex) => (
+                                            <MenuItem key={option} value={option}>
+                                                {itemSchema.labels?.[optionIndex] || option}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
                                 ))}
                                 <Button
                                     size="small"

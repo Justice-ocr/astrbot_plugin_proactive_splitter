@@ -890,9 +890,22 @@
                 for (var itemIndex = 0; itemIndex < itemKeys.length; itemIndex += 1) {
                     var itemKey = itemKeys[itemIndex];
                     var itemSchema = itemSchemas[itemKey] || {};
+                    var itemValue = rows[rowIndex] && rows[rowIndex][itemKey] !== undefined ? rows[rowIndex][itemKey] : schemaDefault(itemSchema);
+                    var itemAttrs = ' data-template-list-path="' + escapeHtml(path) + '" data-template-index="' + rowIndex + '" data-template-key="' + escapeHtml(itemKey) + '"';
+                    var itemControl;
+                    if (Array.isArray(itemSchema.options)) {
+                        var itemOptions = [];
+                        var itemLabels = Array.isArray(itemSchema.labels) ? itemSchema.labels : [];
+                        for (var optionIndex = 0; optionIndex < itemSchema.options.length; optionIndex += 1) {
+                            var optionValue = itemSchema.options[optionIndex];
+                            itemOptions.push('<option value="' + escapeHtml(optionValue) + '"' + (optionValue === itemValue ? ' selected' : '') + '>' + escapeHtml(itemLabels[optionIndex] || optionValue) + '</option>');
+                        }
+                        itemControl = '<select class="pc-select"' + itemAttrs + '>' + itemOptions.join('') + '</select>';
+                    } else {
+                        itemControl = '<input class="pc-input"' + itemAttrs + ' value="' + escapeHtml(itemValue) + '">';
+                    }
                     controls.push(
-                        '<label class="pc-template-field"><span>' + escapeHtml(schemaTitle(itemKey, itemSchema)) + '</span>' +
-                        '<input class="pc-input" data-template-list-path="' + escapeHtml(path) + '" data-template-index="' + rowIndex + '" data-template-key="' + escapeHtml(itemKey) + '" value="' + escapeHtml(rows[rowIndex] && rows[rowIndex][itemKey] !== undefined ? rows[rowIndex][itemKey] : schemaDefault(itemSchema)) + '"></label>'
+                        '<label class="pc-template-field"><span>' + escapeHtml(schemaTitle(itemKey, itemSchema)) + '</span>' + itemControl + '</label>'
                     );
                 }
                 rowHtml.push(

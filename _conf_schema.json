@@ -466,25 +466,16 @@
                 "type": "template_list",
                 "default": [],
                 "templates": {
-                    "suffix_only_rule": {
-                        "name": "孤立后缀规则",
+                    "output_filter_rule": {
+                        "name": "输出过滤规则",
                         "items": {
                             "rule_type": {
-                                "description": "规则类型",
+                                "description": "过滤模式",
                                 "type": "string",
-                                "options": ["suffix_only"],
-                                "default": "suffix_only"
+                                "options": ["prefix_suffix", "suffix_only"],
+                                "labels": ["前后缀区块", "孤立后缀（删除开头至后缀）"],
+                                "default": "prefix_suffix"
                             },
-                            "suffix": {
-                                "description": "删除消息开头至此后缀（包含后缀）",
-                                "type": "string",
-                                "default": "</thinking>"
-                            }
-                        }
-                    },
-                    "output_filter_rule": {
-                        "name": "前后缀规则",
-                        "items": {
                             "prefix": {
                                 "description": "开始前缀",
                                 "type": "string",
@@ -512,7 +503,7 @@
                         }
                     }
                 },
-                "hint": "字面量匹配，不使用正则；孤立后缀规则删除消息开头至第一个后缀，找不到则保留原文"
+                "hint": "字面量匹配，不使用正则；孤立后缀模式仅使用结束后缀，忽略前缀、匹配范围和缺少后缀选项；找不到后缀则保留原文"
             },
             "enable_split": {
                 "description": "启用普通回复分段",
