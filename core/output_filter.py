@@ -12,6 +12,12 @@ def filter_output(text: str, settings: dict) -> str:
         if not isinstance(rule, dict):
             continue
         prefix, suffix = rule.get("prefix"), rule.get("suffix")
+        if rule.get("rule_type") == "suffix_only":
+            if isinstance(suffix, str) and suffix:
+                end = text.find(suffix)
+                if end >= 0:
+                    text = text[end + len(suffix):]
+            continue
         if not isinstance(prefix, str) or not prefix or not isinstance(suffix, str) or not suffix:
             continue
         cursor = 0

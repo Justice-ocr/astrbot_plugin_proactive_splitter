@@ -466,6 +466,22 @@
                 "type": "template_list",
                 "default": [],
                 "templates": {
+                    "suffix_only_rule": {
+                        "name": "孤立后缀规则",
+                        "items": {
+                            "rule_type": {
+                                "description": "规则类型",
+                                "type": "string",
+                                "options": ["suffix_only"],
+                                "default": "suffix_only"
+                            },
+                            "suffix": {
+                                "description": "删除消息开头至此后缀（包含后缀）",
+                                "type": "string",
+                                "default": "</thinking>"
+                            }
+                        }
+                    },
                     "output_filter_rule": {
                         "name": "前后缀规则",
                         "items": {
@@ -496,7 +512,7 @@
                         }
                     }
                 },
-                "hint": "字面量匹配，不使用正则；默认仅从消息开头匹配，适合清理畸形思考输出"
+                "hint": "字面量匹配，不使用正则；孤立后缀规则删除消息开头至第一个后缀，找不到则保留原文"
             },
             "enable_split": {
                 "description": "启用普通回复分段",

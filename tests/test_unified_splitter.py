@@ -217,6 +217,48 @@ def test_output_filter_options_and_multiple_blocks():
     assert filter_output("[bad]x[/bad]", settings) == "[bad]x[/bad]"
 
 
+def test_suffix_only_rule_removes_through_first_suffix():
+    settings = {
+        "output_filter_enabled": True,
+        "output_filter_rules": [{"rule_type": "suffix_only", "suffix": "</thinking>"}],
+    }
+    assert filter_output("hidden</thinking>answer", settings) == "answer"
+    assert filter_output("hidden</thinking>answer</thinking>example", settings) == "answer</thinking>example"
+    assert filter_output("answer without marker", settings) == "answer without marker"
+    assert filter_output("hidden</thinking>", settings) == ""
+    settings["output_filter_rules"][0]["suffix"] = ""
+    assert filter_output("answer", settings) == "answer"
+    settings["output_filter_rules"][0]["suffix"] = None
+    assert filter_output("answer", settings) == "answer"
+
+
+def test_suffix_only_rule_runs_before_render():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"].update({
+        "output_filter_enabled": True,
+        "output_filter_rules": [{"rule_type": "suffix_only", "suffix": "</thinking>"}],
+    })
+    event = FakeEvent("$hidden$</thinking>answer")
+    asyncio.run(plugin.unified_on_decorating_result(event))
+    assert renderer.calls == []
+    assert [c.text for c in event.result.chain] == ["answer"]
+
+
+def test_suffix_only_rule_empty_result_never_sends():
+    renderer.calls.clear()
+    plugin = Plugin()
+    plugin.config["unified_splitter_settings"].update({
+        "output_filter_enabled": True,
+        "output_filter_rules": [{"rule_type": "suffix_only", "suffix": "</thinking>"}],
+    })
+    event = FakeEvent("$hidden$</thinking>")
+    asyncio.run(plugin.unified_on_decorating_result(event))
+    assert event.result.chain == []
+    assert plugin.context.sent == []
+    assert renderer.calls == []
+
+
 def test_rich_blocks_are_images_before_text_splitting():
     renderer.calls.clear()
     renderer.fail = False
