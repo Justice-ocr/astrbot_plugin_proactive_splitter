@@ -311,7 +311,7 @@ def smart_split_text(
     balanced: bool = True,
     no_split_around: list[str] | None = None,
 ) -> list[str]:
-    """Split prose while protecting brackets, quotes, code blocks and think blocks."""
+    """Split quoted prose too, retaining bracket, code and think protection."""
     if not text:
         return []
 
@@ -321,8 +321,6 @@ def smart_split_text(
         compiled = re.compile(r"[。？！?!\n…]+")
 
     pair_map = {
-        "“": "”",
-        "‘": "’",
         "《": "》",
         "（": "）",
         "(": ")",
@@ -330,15 +328,51 @@ def smart_split_text(
         "{": "}",
         "<": ">",
     }
-    quote_chars = {'"', "'", "`"}
+    quote_chars = {"`"}
+    prose_quote_stack: list[str] = []
     text_weight = sum(1 for char in text if not char.isspace())
-    ideal = max(min_segment_length, (text_weight + max_segments - 1) // max_segments) if balanced and max_segments > 0 else 0
+    ideal = (
+        max(min_segment_length, (text_weight + max_segments - 1) // max_segments)
+        if balanced and max_segments > 0
+        else 0
+    )
 
     segments: list[str] = []
     stack: list[str] = []
     chunk: list[str] = []
     weight = 0
     index = 0
+
+    def note_prose_quote(char: str, position: int) -> bool:
+        """Track quote ownership without preventing sentence splitting."""
+        if stack or char not in {"“", "”", "‘", "’", '"', "'"}:
+            return False
+        if char in {'"', "'"}:
+            escapes = 0
+            previous = position - 1
+            while previous >= 0 and text[previous] == "\\":
+                escapes += 1
+                previous -= 1
+            if escapes % 2:
+                return False
+            if (
+                char == "'"
+                and position > 0
+                and position + 1 < len(text)
+                and text[position - 1].isalnum()
+                and text[position + 1].isalnum()
+            ):
+                return False
+        if char in {"”", "’"}:
+            if prose_quote_stack and prose_quote_stack[-1] == char:
+                prose_quote_stack.pop()
+            return True
+        closer = {"“": "”", "‘": "’"}.get(char, char)
+        if char in {'"', "'"} and prose_quote_stack and prose_quote_stack[-1] == char:
+            prose_quote_stack.pop()
+            return True
+        prose_quote_stack.append(closer)
+        return False
 
     while index < len(text):
         for opener, closer in (("```", "```"), ("<think>", "</think>")):
@@ -357,18 +391,22 @@ def smart_split_text(
                 break
         else:
             match = compiled.match(text, index)
-            if match:
+            if match and match.end() > index:
                 delimiter = match.group(0)
+                for offset, char in enumerate(delimiter):
+                    note_prose_quote(char, index + offset)
                 should_split = not stack
                 if should_split and no_split_around:
                     following = text[match.end() :].lstrip(" \t")
                     if any(
-                        following.startswith(word)
-                        for word in no_split_around
-                        if word
+                        following.startswith(word) for word in no_split_around if word
                     ):
                         should_split = False
-                if should_split and ideal and weight < max(min_segment_length, int(ideal * 0.4)):
+                if (
+                    should_split
+                    and ideal
+                    and weight < max(min_segment_length, int(ideal * 0.4))
+                ):
                     should_split = False
                 chunk.append(delimiter)
                 index += len(delimiter)
@@ -382,6 +420,12 @@ def smart_split_text(
                 continue
 
             char = text[index]
+            closing_prose_quote = note_prose_quote(char, index)
+            if closing_prose_quote and not chunk and segments:
+                # A closing quote after a sentence belongs to that same segment.
+                segments[-1] += char
+                index += 1
+                continue
             if char in quote_chars:
                 if stack and stack[-1] == char:
                     stack.pop()

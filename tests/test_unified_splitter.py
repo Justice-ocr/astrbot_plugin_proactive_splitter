@@ -388,6 +388,44 @@ def test_long_formula_heavy_reply_is_split_into_multiple_images():
     assert diagnostics["last_full_reply_images"] == len(renderer.calls)
 
 
+def test_ordinary_quoted_reply_uses_multiple_send_units():
+    plugin = Plugin()
+    text = "“第一句。第二句。第三句。”"
+    event = FakeEvent(text)
+    asyncio.run(plugin.unified_on_decorating_result(event))
+
+    units = [components for _, components in plugin.context.sent]
+    units.append(event.result.chain)
+    messages = [
+        component.text
+        for unit in units
+        for component in unit
+        if isinstance(component, Plain)
+    ]
+    assert messages == ["“第一句。", "第二句。", "第三句。”"]
+    assert "".join(messages) == text
+
+
+def test_proactive_quoted_reply_uses_the_same_send_units():
+    plugin = Plugin()
+    text = "“第一句。第二句。第三句。”"
+    event = FakeEvent(text)
+    event.__proactive_chat_event = True
+    event.result.is_model_result = lambda: False
+    asyncio.run(plugin.unified_on_decorating_result(event))
+
+    units = [components for _, components in plugin.context.sent]
+    units.append(event.result.chain)
+    messages = [
+        component.text
+        for unit in units
+        for component in unit
+        if isinstance(component, Plain)
+    ]
+    assert messages == ["“第一句。", "第二句。", "第三句。”"]
+    assert "".join(messages) == text
+
+
 def test_reverse_replace_is_applied_to_user_prompt():
     plugin = Plugin()
     plugin.config["unified_splitter_settings"].update(
