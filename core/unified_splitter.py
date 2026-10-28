@@ -15,6 +15,7 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.star.session_llm_manager import SessionServiceManager
 
+from .external_reply import ExternalReplyMixin
 from .mathjax_renderer import MathJaxRenderer
 from .pillowmd_renderer import PillowMarkdownRenderer
 from .output_filter import filter_output
@@ -28,7 +29,7 @@ from .rich_content import (
 )
 
 
-class UnifiedSplitterMixin:
+class UnifiedSplitterMixin(ExternalReplyMixin):
     """One sending pipeline for reactive replies and proactive chat messages."""
 
     context: Any
@@ -76,6 +77,7 @@ class UnifiedSplitterMixin:
                 stats.get("full_reply_render_count", 0) or 0
             ),
             "last_segments_count": int(stats.get("last_segments_count", 0) or 0),
+            "last_delivery": stats.get("last_delivery"),
             "last_processed_at": stats.get("last_processed_at"),
         }
 
@@ -143,76 +145,45 @@ class UnifiedSplitterMixin:
 
         settings = self._get_unified_splitter_config(event)
         if settings.get("output_filter_enabled", False) and self._is_model_result(event, result):
-            filtered_chain = []
+            filtered = []
             for component in self._merge_adjacent_plain(list(result.chain)):
                 if isinstance(component, Plain):
                     component.text = filter_output(component.text, settings)
                 if not isinstance(component, Plain) or component.text.strip():
-                    filtered_chain.append(component)
-            result.chain[:] = filtered_chain
+                    filtered.append(component)
+            result.chain[:] = filtered
         if not result.chain:
             return
-        if not settings.get("enable", True):
+        if not self.external_reply_policy(event, result)["accepted"]:
             return
-
-        umo = str(getattr(event, "unified_msg_origin", "") or "")
-        blacklist = settings.get("conversation_blacklist", []) or []
-        whitelist = settings.get("conversation_whitelist", []) or []
-        if umo in blacklist or (whitelist and umo not in whitelist):
-            return
-        group_id = getattr(getattr(event, "message_obj", None), "group_id", None)
-        if group_id and not settings.get("enable_group_split", True):
-            return
-        if settings.get("split_scope", "llm_only") == "llm_only" and not self._is_model_result(event, result):
-            return
-
         setattr(result, "__unified_splitter_processed", True)
-        segments = await self._build_unified_segments(event, list(result.chain), settings)
-        self._post_clean_segments(segments, settings)
-        segments = [segment for segment in segments if self._segment_has_content(segment)]
-        self._record_unified_splitter_diagnostic(
-            last_segments_count=len(segments),
-            last_processed_at=time.time(),
+        segments = await self._prepare_unified_segments(
+            event, result, settings, apply_filter=False
         )
         if not segments:
             result.chain.clear()
             return
 
-        source_id = str(getattr(getattr(event, "message_obj", None), "message_id", "") or "")
-        if settings.get("enable_reply", True) and source_id:
-            if not any(isinstance(component, Reply) for component in segments[0]):
-                segments[0].insert(0, Reply(id=source_id))
+        async def send(message):
+            if getattr(event, "__proactive_chat_event", False) and hasattr(self, "_send_processed_chain"):
+                return await self._send_processed_chain(event.unified_msg_origin, message.chain)
+            return await self.context.send_message(event.unified_msg_origin, message)
 
-        if len(segments) == 1:
-            result.chain.clear()
-            result.chain.extend(segments[0])
-            return
+        def current():
+            guard = getattr(event, "_daily_life_reply_is_current", None)
+            return not getattr(event, "is_stopped", lambda: False)() and (not callable(guard) or guard())
 
-        for index, segment in enumerate(segments[:-1]):
-            if not segment:
-                continue
-            try:
-                send_segment = await self._unified_process_tts(event, segment, settings)
-                if getattr(event, "__proactive_chat_event", False) and hasattr(
-                    self, "_send_processed_chain"
-                ):
-                    await self._send_processed_chain(
-                        event.unified_msg_origin,
-                        send_segment,
-                    )
-                else:
-                    chain = MessageChain()
-                    chain.chain = send_segment
-                    await self.context.send_message(event.unified_msg_origin, chain)
-                delay = self._unified_delay(segments[index + 1], settings, event)
-                if delay > 0:
-                    await asyncio.sleep(delay)
-            except Exception as exc:
-                logger.error(f"[Proactive Splitter] 发送分段失败: {exc}")
+        # Preserve the framework's final-send / after_message_sent contract.
+        receipt = await self._deliver_unified_segments(
+            event, result, segments[:-1], send=send, is_current=current, allow_tts=True,
+        )
+        if receipt["status"] == "handled" and len(segments) > 1:
+            delay = self._unified_delay(segments[-1], self._get_unified_splitter_config(event), event)
+            if delay > 0:
+                await asyncio.sleep(delay)
+        applicable = self.external_reply_policy(event, result)["accepted"]
+        result.chain[:] = segments[-1] if receipt["status"] == "handled" and current() and applicable else []
 
-        result.chain.clear()
-        result.chain.extend(segments[-1])
-        logger.info(f"[Proactive Splitter] 已生成 {len(segments)} 个发送单元。")
 
     async def _build_unified_segments(self, event: Any, chain: list, settings: dict) -> list[list]:
         chain = self._merge_adjacent_plain(chain)

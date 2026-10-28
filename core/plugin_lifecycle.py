@@ -38,6 +38,7 @@ class LifecycleMixin:
 
     async def initialize(self) -> None:
         """插件的异步初始化函数。"""
+        self._unified_splitter_closing = False
         # 初始化共享锁
         self.data_lock = asyncio.Lock()
 
@@ -152,6 +153,7 @@ class LifecycleMixin:
 
     async def terminate(self) -> None:
         """插件被卸载或停用时调用的清理函数。"""
+        self._unified_splitter_closing = True
         logger.info("[主动消息] 收到插件终止指令，开始清理资源喵。")
         try:
             cleanup_rich_renderer = getattr(

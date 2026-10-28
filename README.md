@@ -345,6 +345,14 @@ python -m playwright install chromium-headless-shell
 
 表格和公式识别始终发生在文本分段之前，以保证富内容不会被拆散。
 
+### 外部回复交接接口
+
+插件提供 `external_reply_policy(event, result)` 与 `process_external_reply(...)`，供其他插件在自己的加工完成后请求本插件处理最终文本。接口动态复用本插件的过滤、富内容识别、分段、发送间隔、TTS 配置及会话范围策略；接收方通过当前 AstrBot 插件注册表查询当前活动实例，不应缓存实例或复制分段算法。
+
+处理回执状态为 `not_handled`、`handled`、`partial`、`failed` 或 `cancelled`。只有 `not_handled` 表示未接管，调用方可使用原发送路径；其他状态均代表已接管或结果不确定，不得整条重发。交接发送默认不重复执行 TTS，调用方需要逐段投递回执时通过 `on_sent` 获取已确认发送的消息。日志只记录处理状态、段数、已发送数与原因码，不记录正文或会话标识。
+
+普通装饰钩子与外部入口共用同一个分段和富内容构建实现。
+
 ## 数据目录
 
 插件继续使用：
