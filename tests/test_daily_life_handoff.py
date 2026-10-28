@@ -103,7 +103,7 @@ def test_daily_background_handoff_uses_real_splitter_after_foreground_clear():
     scope = "test:FriendMessage:1"
     source = types.SimpleNamespace(
         unified_msg_origin=scope,
-        plugins_name=["*"],
+        plugins_name=["astrbot_plugin_daily_life"],
         message_obj=types.SimpleNamespace(message_id="42", group_id=None),
         is_stopped=lambda: False,
         get_result=lambda: None,
@@ -244,8 +244,33 @@ def test_recall_or_new_turn_cancels_remaining_units_without_replay():
     assert len(runtime.sent) == 1
 
 
+def test_preparation_failure_declines_before_sending_so_caller_can_fallback():
+    peer = splitter_tests.Plugin()
+    runtime = FakeDailyRuntime(peer)
+    event = splitter_tests.FakeEvent("合成回复")
+    calls = []
+
+    async def fail_prepare(*args, **kwargs):
+        raise RuntimeError("synthetic preparation failure")
+
+    peer._prepare_unified_segments = fail_prepare
+
+    async def send(message):
+        calls.append(message)
+
+    outcome = asyncio.run(peer.process_external_reply(
+        event, event.result, send=send, is_current=lambda: True
+    ))
+    assert outcome["status"] == "not_handled"
+    assert outcome["reason"] == "preparation_failed"
+    assert calls == []
+
+
 def test_peer_scope_exclusion_is_non_claim_and_preserves_one_fallback():
     peer = splitter_tests.Plugin()
+    peer.config["unified_splitter_settings"]["conversation_blacklist"] = [
+        "test:FriendMessage:1"
+    ]
     runtime = FakeDailyRuntime(peer)
     event = types.SimpleNamespace(
         unified_msg_origin="test:FriendMessage:1", plugins_name=["some_other_plugin"],

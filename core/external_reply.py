@@ -14,7 +14,6 @@ from astrbot.core.message.message_event_result import MessageChain
 
 from .output_filter import filter_output
 
-PLUGIN_NAME = "astrbot_plugin_proactive_splitter"
 
 
 class ExternalReplyMixin:
@@ -29,9 +28,6 @@ class ExternalReplyMixin:
         elif not settings.get("enable", True):
             reason = "disabled"
         else:
-            plugins = getattr(event, "plugins_name", None)
-            if plugins is not None and plugins != ["*"] and PLUGIN_NAME not in plugins:
-                reason = "plugin_scope"
             umo = str(getattr(event, "unified_msg_origin", "") or "")
             blacklist = settings.get("conversation_blacklist", []) or []
             whitelist = settings.get("conversation_whitelist", []) or []
@@ -150,16 +146,26 @@ class ExternalReplyMixin:
         if not policy["accepted"]:
             return self._delivery_receipt("not_handled", 0, 0, policy["reason"])
         setattr(result, "__unified_splitter_processed", True)
+        attempted = False
+
+        async def guarded_send(message):
+            nonlocal attempted
+            attempted = True
+            return await send(message)
+
         try:
             segments = await self._prepare_unified_segments(event, result, self._get_unified_splitter_config(event))
         except asyncio.CancelledError:
             raise
         except Exception:
-            receipt = self._delivery_receipt("failed", 0, 0, "preparation_failed")
+            receipt = self._delivery_receipt(
+                "partial" if attempted else "not_handled", 0, 0,
+                "send_or_receipt_failed" if attempted else "preparation_failed",
+            )
             setattr(result, "__unified_splitter_delivery", receipt)
             self._log_delivery_receipt(receipt)
             return receipt
         return await self._deliver_unified_segments(
-            event, result, segments, send=send, is_current=is_current,
+            event, result, segments, send=guarded_send, is_current=is_current,
             on_sent=on_sent, allow_tts=allow_tts,
         )
